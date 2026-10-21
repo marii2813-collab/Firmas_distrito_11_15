@@ -23,13 +23,13 @@
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Número de sección: caja de color, como las etiquetas de ruta del reporte.
-     El color de fondo lo pone el script según el semáforo de la sección. */
+  /* Etiquetas de sección mejoradas: caja sólida con color de semáforo y texto contrastado */
   .etiqueta-wrap { pointer-events:none; }
   .etiqueta-seccion {
     position:absolute; left:0; top:0; transform:translate(-50%,-50%);
-    background:#003366; color:#fff; border:1px solid #fff; border-radius:3px;
-    font-weight:700; line-height:1.2; padding:0 3px; white-space:nowrap;
+    border:1px solid rgba(255,255,255,0.8); border-radius:3px;
+    font-weight:700; line-height:1.2; padding:1px 4px; white-space:nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   }
 
   .badge-status { padding:2px 6px; border-radius:4px; font-weight:700; font-size:10px; color:#fff; display:inline-block; }
@@ -38,18 +38,11 @@
   .bg-meta-critico { background-color:#ef4444; }
   .bg-meta-na { background-color:#94a3b8; color:#fff; }
 
-  /* Tarjeta de título y resumen sobre el mapa: solo aparece al imprimir */
+  /* Elementos exclusivos para impresión */
+  #titulo-mapa { display:none; }
   #resumen-mapa { display:none; }
-
-  /* Hojas de detalle con zoom: solo aparecen al imprimir */
   #detalle-impresion { display:none; }
-  .pagina-detalle { width:1080px; height:746px; break-before:page; page-break-before:always; }
-  .titulo-detalle { margin:0 0 4px; font-size:12px; font-weight:700; color:#003366; border-bottom:2px solid #003366; padding-bottom:3px; }
-  .mapa-detalle { width:1080px; height:720px; }
 
-  /* Modo impresión (lo activan el botón o Ctrl+P).
-     Hoja A4 horizontal con márgenes de 5 mm: 287 x 200 mm (~1085 x 756 px).
-     El mapa usa 1080 x 746 px y cubre casi toda la hoja. */
   body.modo-impresion #header-bar,
   body.modo-impresion #sidebar,
   body.modo-impresion #btn-panel,
@@ -58,14 +51,11 @@
   body.modo-impresion #app { display:block !important; height:auto !important; overflow:visible !important; }
   body.modo-impresion #mapa-wrap { flex:none; width:1080px; height:746px; }
   body.modo-impresion #resumen-mapa { display:block; position:absolute; top:8px; left:8px; z-index:1000; width:340px; padding:8px 10px; background:rgba(248,250,252,.95); border:1px solid var(--borde); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
-  body.modo-impresion #detalle-impresion { display:block; }
 
   @media print {
     @page { size:A4 landscape; margin:5mm; }
-    /* Conserva fondos y colores aunque el navegador tenga "Gráficos de fondo" desmarcado */
     * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     body { background:#fff !important; }
-    /* El reporte de tablas empieza en la hoja nueva */
     #reporte-impresion { break-before:page; page-break-before:always; }
     #pdf-agrupado-container > div, tr { break-inside:avoid; }
   }
@@ -143,12 +133,12 @@
     </div>
   </aside>
 
-  <!-- VISTA DEL MAPA -->
+  <!-- VISTA DEL MAPA ÚNICO -->
   <div id="mapa-wrap">
     <div id="map"></div>
     <button id="btn-panel" class="flotante" onclick="toggleSidebar()">☰ Panel</button>
 
-    <!-- Título y resumen sobre el mapa: solo aparece al imprimir -->
+    <!-- Resumen flotante sobre el mapa al imprimir -->
     <div id="resumen-mapa">
       <h2 class="text-sm font-bold text-blue-900">Mapa de Avance de Firmas</h2>
       <p class="text-[10px] text-slate-600 mb-1.5"><span id="titulo-mapa-distrito"></span> | Generado: <span id="titulo-mapa-fecha"></span></p>
@@ -164,10 +154,9 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-700 mt-2">
-        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Verde: 10 o más</span>
-        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>Amarillo: 5 a 9</span>
-        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Rojo: 0 a 4</span>
-        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-400 inline-block"></span>Sin dato</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Verde: 10+</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>Amarillo: 5-9</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Rojo: 0-4</span>
       </div>
     </div>
 
@@ -181,10 +170,9 @@
   </div>
 </div>
 
-<!-- HOJAS DE DETALLE CON ZOOM (se llenan al imprimir) -->
 <div id="detalle-impresion"></div>
 
-<!-- REPORTE PARA IMPRESIÓN (después de los mapas) -->
+<!-- REPORTE DE TABLAS (Página siguiente al imprimir) -->
 <div id="reporte-impresion" class="p-6 bg-white hidden">
   <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
     <div>
@@ -197,9 +185,7 @@
     </div>
   </div>
 
-  <div id="pdf-agrupado-container" class="space-y-6">
-    <!-- Se llena dinámicamente con tablas separadas por color -->
-  </div>
+  <div id="pdf-agrupado-container" class="space-y-6"></div>
 </div>
 
 <script>
@@ -207,19 +193,13 @@
   const URL_TELAS = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const ATRIBUCION = '© OpenStreetMap contributors';
 
-  // Relleno y grosor del límite de cada sección: en pantalla y en impresión
-  const RELLENO = { pantalla: 0.55, impresion: 0.3 };
-  const BORDE = { pantalla: 1.5, impresion: 2.4 };
-  // Tamaño de los números (px). Dentro de cada hoja todos usan el mismo tamaño: el mayor que cabe
-  // dentro de al menos "cobertura" de las secciones. Los que no caben se acomodan lo más cerca posible.
-  const ETIQUETA = { max: 8, maxDetalle: 12, min: 5, cobertura: 0.85 };
-  // Caja de cada número: relleno horizontal y borde (px)
-  const CAJA = { padX: 3, borde: 1 };
-  // Velo sobre lo que queda fuera del distrito (solo al imprimir): 0 = sin velo, 1 = blanco total
-  const VELO_FUERA = 0.6;
-  // true: además de la hoja general, imprime dos hojas con zoom (mitades del distrito) para leer mejor
-  const IMPRESION_DETALLE = true;
-  // Colores de cada caja según el semáforo de la sección
+  // Opacidad optimizada (0.40) para que el mapa base y las calles se noten claramente
+  const RELLENO = { pantalla: 0.40, impresion: 0.30 };
+  const BORDE = { pantalla: 1.5, impresion: 2.0 };
+  const ETIQUETA = { max: 9, min: 5, cobertura: 0.85 };
+  const CAJA = { padX: 4, borde: 1 };
+  const VELO_FUERA = 0.5;
+
   const ESTILO_ETIQUETA = {
     'bg-meta-ok':      { fondo: '#16a34a', texto: '#fff' },
     'bg-meta-proceso': { fondo: '#eab308', texto: '#000' },
@@ -227,9 +207,7 @@
     'bg-meta-na':      { fondo: '#64748b', texto: '#fff' }
   };
 
-  // SVG (no canvas): las líneas salen nítidas al guardar en PDF
   let map = L.map('map', { zoomSnap: 0.25 }).setView([19.395, -99.095], 13);
-  // El velo va por debajo de las secciones y de los números
   map.createPane('velo');
   map.getPane('velo').style.zIndex = 350;
 
@@ -241,15 +219,13 @@
   let datosSeccionesGeoJSON = null;
   let datosDistrito11GeoJSON = null;
   let datosDistrito15GeoJSON = null;
-
-  let seleccionSecciones = [];     // secciones visibles según distrito y estatus
+  let seleccionSecciones = [];
   let opacidadRelleno = RELLENO.pantalla;
   let grosorBorde = BORDE.pantalla;
-  let etiquetas = [];              // { texto, html, polo, pole0, ringRel0, anchoPorPx, marker }
+  let etiquetas = [];
   let vistaAntesDeImprimir = null;
   let impresionPreparada = false;
   let velo = null;
-  let detalleMapas = [];
   let cargasPendientes = [];
 
   map.on('zoomend moveend', ajustarEtiquetas);
@@ -292,10 +268,9 @@
   function calcularEstatus(recabadas) {
     if (recabadas >= 10) return 'VERDE';
     if (recabadas >= 5) return 'AMARILLO';
-    return 'ROJO'; // 0 a 4
+    return 'ROJO';
   }
 
-  // ¿La sección entra en el distrito y en el estatus elegidos?
   function pasaFiltros(feature, distrito, estatus) {
     if (distrito !== 'TODOS') {
       const distL = String(feature.properties.DISTRITO_L || '').trim();
@@ -309,29 +284,24 @@
     return estatus === 'TODOS' || estatus === tipoEstatus;
   }
 
-  // Estilo de una sección: color por semáforo, con relleno y límite de la opacidad y grosor dados
   function estiloSeccion(feature, opacidad, grosor) {
     const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
     if (valFirmas === null || valFirmas === undefined || valFirmas === '') {
       return { color: '#334155', weight: grosor, fillColor: '#94a3b8', fillOpacity: opacidad };
     }
     const recabadas = parseFloat(valFirmas) || 0;
-    let color = '#ef4444';                       // Rojo (0 a 4)
-    if (recabadas >= 10) color = '#22c55e';      // Verde (10+)
-    else if (recabadas >= 5) color = '#eab308';  // Amarillo (5 a 9)
+    let color = '#ef4444';
+    if (recabadas >= 10) color = '#22c55e';
+    else if (recabadas >= 5) color = '#eab308';
     return { color: '#00203f', weight: grosor, fillColor: color, fillOpacity: opacidad };
   }
 
-  // Cambia el relleno y el grosor del límite de todas las secciones del mapa principal
   function aplicarEstiloSecciones(opacidad, grosor) {
     opacidadRelleno = opacidad;
     grosorBorde = grosor;
     capaSecciones.eachLayer(grupo => grupo.eachLayer(p => p.setStyle({ fillOpacity: opacidad, weight: grosor })));
   }
 
-  /* ---------- Geometría ---------- */
-
-  // Suma de productos cruzados del anillo (2 veces el área con signo)
   function sumaCruzada(anillo) {
     let S = 0;
     for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
@@ -340,7 +310,6 @@
     return S;
   }
 
-  // Anillo exterior más grande de un Polygon o MultiPolygon (coordenadas [lng, lat])
   function anilloPrincipal(geom) {
     const poligonos = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
     let mejor = [], mayor = -1;
@@ -351,7 +320,6 @@
     return mejor;
   }
 
-  // Centroide geométrico de un anillo (funciona con cualquier sistema de coordenadas)
   function centroideAnillo(anillo) {
     const S = sumaCruzada(anillo);
     if (Math.abs(S) < 1e-12) {
@@ -369,7 +337,6 @@
     return [cx / (3 * S), cy / (3 * S)];
   }
 
-  // Distancia del punto (px, py) al segmento a-b, al cuadrado
   function distanciaSegmentoAlCuadrado(px, py, ax, ay, bx, by) {
     let x = ax, y = ay;
     const dx = bx - ax, dy = by - ay;
@@ -381,7 +348,6 @@
     return (px - x) ** 2 + (py - y) ** 2;
   }
 
-  // Distancia con signo de un punto al borde del anillo (positiva si está dentro)
   function distanciaAlBorde(x, y, anillo) {
     let dentro = false, minD2 = Infinity;
     for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
@@ -395,8 +361,6 @@
     return (dentro ? 1 : -1) * Math.sqrt(minD2);
   }
 
-  // Pole de inaccesibilidad: el punto más alejado de los bordes del polígono,
-  // es decir, su centro visual (algoritmo polylabel). Garantiza que el punto cae dentro.
   function poloDeInaccesibilidad(anillo) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     anillo.forEach(([x, y]) => {
@@ -412,7 +376,6 @@
       const d = distanciaAlBorde(x, y, anillo);
       return { x, y, h, d, max: d + h * Math.SQRT2 };
     };
-    // La cola se mantiene ordenada por "max": la celda más prometedora queda al final
     const insertar = (cola, c) => {
       let i = cola.length;
       while (i > 0 && cola[i - 1].max > c.max) i--;
@@ -427,7 +390,6 @@
       }
     }
 
-    // Candidatos iniciales: el centroide y el centro de la caja envolvente
     const [cx, cy] = centroideAnillo(anillo);
     let mejor = celda(cx, cy, 0);
     const caja = celda(minX + ancho / 2, minY + alto / 2, 0);
@@ -446,25 +408,19 @@
     return [mejor.x, mejor.y];
   }
 
-  /* ---------- Números de sección: tamaño y forma ---------- */
-
   const medidorTexto = document.createElement('canvas').getContext('2d');
-
-  // Ancho del número por cada píxel de tamaño de letra (en negrita)
   function anchoPorPixel(texto) {
     medidorTexto.font = '700 100px system-ui, -apple-system, sans-serif';
     return medidorTexto.measureText(texto).width / 100;
   }
 
-  // Medias dimensiones de la caja de un número de tamaño fs (relleno, borde y un margen de 1.5 px)
   function medidasCaja(fs, anchoPorPx) {
     return {
-      hw: (anchoPorPx * fs + 2 * CAJA.padX + 2 * CAJA.borde) / 2 + 1.5,
-      hh: (fs * 1.2 + 2 * CAJA.borde) / 2 + 1.5
+      hw: (anchoPorPx * fs + 2 * CAJA.padX + 2 * CAJA.borde) / 2 + 1,
+      hh: (fs * 1.2 + 2 * CAJA.borde) / 2 + 1
     };
   }
 
-  // ¿Se cruzan los segmentos p1-p2 y p3-p4?
   function orientacion(p, q, r) {
     return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
   }
@@ -474,9 +430,6 @@
     return d1 * d2 < 0 && d3 * d4 < 0;
   }
 
-  // ¿Cabe un rectángulo centrado en el origen (media anchura hw, media altura hh) dentro del contorno?
-  // El origen es el polo, que ya está dentro, así que basta con que ningún borde cruce el rectángulo
-  // ni haya vértices dentro de él.
   function cabeRectangulo(contorno, hw, hh) {
     for (const [x, y] of contorno) {
       if (Math.abs(x) < hw && Math.abs(y) < hh) return false;
@@ -490,7 +443,6 @@
     return true;
   }
 
-  // Mayor tamaño de letra (entre ETIQUETA.min y maxFs) que deja el número dentro del polígono; null si no cabe
   function mayorTamanoQueCabe(contorno, anchoPorPx, maxFs) {
     const cabe = fs => {
       const { hw, hh } = medidasCaja(fs, anchoPorPx);
@@ -499,7 +451,7 @@
     if (cabe(maxFs)) return maxFs;
     if (!cabe(ETIQUETA.min)) return null;
 
-    let bajo = ETIQUETA.min, alto = maxFs; // bajo cabe, alto no
+    let bajo = ETIQUETA.min, alto = maxFs;
     for (let i = 0; i < 8; i++) {
       const medio = (bajo + alto) / 2;
       if (cabe(medio)) bajo = medio; else alto = medio;
@@ -507,7 +459,6 @@
     return bajo;
   }
 
-  // Un solo tamaño para todos los números de la hoja: el mayor que cabe dentro de al menos ETIQUETA.cobertura
   function tamanoUniforme(medidas, maxFs) {
     const n = medidas.length;
     for (let fs = maxFs; fs > ETIQUETA.min; fs -= 0.25) {
@@ -517,7 +468,6 @@
     return ETIQUETA.min;
   }
 
-  // Rectángulo (px de mundo al zoom actual) que ocupa un número centrado en c
   function rectanguloEtiqueta(c, fs, anchoPorPx) {
     const { hw, hh } = medidasCaja(fs, anchoPorPx);
     return { x1: c[0] - hw, y1: c[1] - hh, x2: c[0] + hw, y2: c[1] + hh };
@@ -527,19 +477,17 @@
     return a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
   }
 
-  // Área en común de dos rectángulos (0 si no se tocan)
   function areaSolape(a, b) {
     const w = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);
     const h = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
     return w > 0 && h > 0 ? w * h : 0;
   }
 
-  // Zonas ocupadas por los elementos flotantes visibles del mapa principal (panel, leyenda, tarjeta)
   function obstaculosVisibles(z) {
     const base = document.getElementById('map').getBoundingClientRect();
     const rects = [];
     document.querySelectorAll('#mapa-wrap .flotante, #resumen-mapa').forEach(el => {
-      if (!el.offsetParent) return; // oculto
+      if (!el.offsetParent) return;
       const r = el.getBoundingClientRect();
       const a = map.project(map.containerPointToLatLng(L.point(r.left - base.left, r.top - base.top)), z);
       const b = map.project(map.containerPointToLatLng(L.point(r.right - base.left, r.bottom - base.top)), z);
@@ -552,8 +500,6 @@
     return rects;
   }
 
-  // Busca el lugar más cercano al centro de la sección donde el número no se encime con otro
-  // ni con un elemento flotante. Si no hay ninguno libre, usa el que menos se encima.
   function colocarCercaDeLaSeccion(centroPx, radio, fs, anchoPorPx, ocupadas, obstaculos, vista) {
     const { hw, hh } = medidasCaja(fs, anchoPorPx);
     const m = 4;
@@ -580,7 +526,6 @@
     return mejor ? mejor.c : centroPx;
   }
 
-  // Pone el número e en la posición c (px de mundo) del mapa m, con tamaño fs
   function ponerEtiqueta(m, e, c, fs, z) {
     e.marker.setLatLng(m.unproject(L.point(c[0], c[1]), z));
     const span = e.marker.getElement()?.querySelector('.etiqueta-seccion');
@@ -589,10 +534,6 @@
     span.style.fontSize = fs.toFixed(2) + 'px';
   }
 
-  // Coloca los números de un mapa m (registros: { marker, pole0, ringRel0, anchoPorPx }):
-  // 1) un solo tamaño para todos;
-  // 2) los que caben a ese tamaño se quedan en el centro de su sección;
-  // 3) los demás se acomodan lo más cerca posible de su sección, sin encimarse con otros números.
   function ajustarEtiquetasEn(m, registros, obstaculos, maxFs) {
     if (!registros.length) return;
     const z = m.getZoom();
@@ -623,15 +564,11 @@
     });
   }
 
-  // Números del mapa principal, al cambiar el zoom o mover el mapa
   function ajustarEtiquetas() {
     if (!etiquetas.length) return;
     ajustarEtiquetasEn(map, etiquetas, obstaculosVisibles(map.getZoom()), ETIQUETA.max);
   }
 
-  /* ---------- Encuadre e impresión ---------- */
-
-  // GeoJSON de los distritos elegidos (si no hay contornos, se usan las secciones)
   function fuentesDelDistrito(dist) {
     const fuentes = [];
     if ((dist === '11' || dist === 'TODOS') && datosDistrito11GeoJSON) fuentes.push(datosDistrito11GeoJSON);
@@ -649,7 +586,6 @@
     return limites;
   }
 
-  // Anillos del contorno del distrito en [lat, lng], para dibujar el velo con huecos
   function anillosDelDistrito(dist) {
     const anillos = [];
     fuentesDelDistrito(dist).forEach(g => {
@@ -663,7 +599,6 @@
     return anillos;
   }
 
-  // Velo blanco sobre lo que queda fuera del distrito en el mapa m
   function ponerVelo(m, dist) {
     const anillos = anillosDelDistrito(dist);
     if (!anillos.length) return null;
@@ -678,7 +613,6 @@
     if (velo) { velo.remove(); velo = null; }
   }
 
-  // ¿Toca el contorno al rectángulo r (en px de mundo)?
   function anilloChocaConRect(anillo, r) {
     for (const [x, y] of anillo) {
       if (x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2) return true;
@@ -689,10 +623,9 @@
         if (segmentosSeCruzan(anillo[j], anillo[i], esquinas[k], esquinas[(k + 1) % 4])) return true;
       }
     }
-    return distanciaAlBorde(r.x1, r.y1, anillo) > 0; // el rectángulo queda dentro de una sección
+    return distanciaAlBorde(r.x1, r.y1, anillo) > 0;
   }
 
-  // ¿La tarjeta de título (rectángulo r, en px de mundo a zoom z) tapa alguna sección?
   function tarjetaChocaConDistrito(r, z) {
     const s = Math.pow(2, z);
     return etiquetas.some(e => anilloChocaConRect(
@@ -700,8 +633,6 @@
     ));
   }
 
-  // Encuadra el distrito lo más grande posible y centrado en el mapa principal.
-  // Si la tarjeta tapa una sección, se baja un poco el zoom hasta que quede libre.
   function encuadrarDistrito(limites) {
     const tarjeta = document.getElementById('resumen-mapa');
     const tw = tarjeta.offsetWidth, th = tarjeta.offsetHeight;
@@ -712,15 +643,13 @@
     for (let z = zMax, i = 0; i < 8; z -= 0.25, i++) {
       map.setView(centro, z, { animate: false });
       const o = map.project(centro, z);
-      const x1 = o.x - W / 2 + 8, y1 = o.y - H / 2 + 8;   // esquina de la tarjeta en px de mundo
+      const x1 = o.x - W / 2 + 8, y1 = o.y - H / 2 + 8;
       const r = { x1: x1 - 4, y1: y1 - 4, x2: x1 + tw + 4, y2: y1 + th + 4 };
       if (!tarjetaChocaConDistrito(r, z)) return;
     }
     map.setView(centro, zMax, { animate: false });
   }
 
-  // Promesa que se resuelve cuando un mapa base termina de descargar sus teselas
-  // (o al cabo de un tiempo máximo). Se registra antes de mover el mapa para no perder eventos.
   function registrarCargaTeselas(capa) {
     return new Promise(resolve => {
       let empezo = false, t1, t2;
@@ -734,82 +663,11 @@
       };
       capa.on('tileloadstart', alEmpezar);
       capa.on('load', fin);
-      t1 = setTimeout(() => { if (!empezo) fin(); }, 800); // no había teselas nuevas que bajar
-      t2 = setTimeout(fin, 8000);                           // tope de seguridad
+      t1 = setTimeout(() => { if (!empezo) fin(); }, 800);
+      t2 = setTimeout(fin, 8000);
     });
   }
 
-  // Hojas de detalle: el distrito se parte en dos mitades y cada mitad se muestra con más zoom
-  function crearPaginasDetalle(dist, limites, textoDistrito) {
-    const contenedor = document.getElementById('detalle-impresion');
-    contenedor.innerHTML = '';
-
-    const sw = limites.getSouthWest(), ne = limites.getNorthEast();
-    const latMedia = (sw.lat + ne.lat) / 2;
-    const anchoReal = (ne.lng - sw.lng) * Math.cos(latMedia * Math.PI / 180);
-    const altoReal = ne.lat - sw.lat;
-    const porLng = anchoReal >= altoReal;   // se parte a lo largo del lado más largo
-    const corte = porLng ? (sw.lng + ne.lng) / 2 : (sw.lat + ne.lat) / 2;
-
-    const mitades = porLng
-      ? [ { nombre: 'oeste', limites: L.latLngBounds([sw.lat, sw.lng], [ne.lat, corte]) },
-          { nombre: 'este',  limites: L.latLngBounds([sw.lat, corte], [ne.lat, ne.lng]) } ]
-      : [ { nombre: 'sur',   limites: L.latLngBounds([sw.lat, sw.lng], [corte, ne.lng]) },
-          { nombre: 'norte', limites: L.latLngBounds([corte, sw.lng], [ne.lat, ne.lng]) } ];
-
-    // Cada número va a la mitad donde está su centro
-    const enMitad = (e, i) => porLng
-      ? (i === 0 ? e.polo.lng <= corte : e.polo.lng > corte)
-      : (i === 0 ? e.polo.lat < corte : e.polo.lat >= corte);
-
-    mitades.forEach((mitad, i) => {
-      const id = 'mapa-detalle-' + i;
-      const pagina = document.createElement('div');
-      pagina.className = 'pagina-detalle';
-      pagina.innerHTML = `
-        <p class="titulo-detalle">${textoDistrito} | Detalle: mitad ${mitad.nombre}</p>
-        <div id="${id}" class="mapa-detalle"></div>`;
-      contenedor.appendChild(pagina);
-
-      const m = L.map(id, {
-        zoomSnap: 0.25, maxZoom: 19, zoomControl: false,
-        dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false,
-        boxZoom: false, keyboard: false, zoomAnimation: false, fadeAnimation: false,
-        markerZoomAnimation: false, inertia: false
-      });
-      m.setView(mitad.limites.getCenter(), m.getBoundsZoom(mitad.limites, false, L.point(16, 16)), { animate: false });
-      m.createPane('velo');
-      m.getPane('velo').style.zIndex = 350;
-      detalleMapas.push(m);
-
-      const teselas = L.tileLayer(URL_TELAS, { attribution: ATRIBUCION, maxZoom: 19 }).addTo(m);
-      cargasPendientes.push(registrarCargaTeselas(teselas));
-
-      fuentesDelDistrito(dist).forEach(g => L.geoJSON(g, {
-        style: { color: '#002244', weight: 3, fillOpacity: 0, dashArray: '6, 6' }, interactive: false
-      }).addTo(m));
-
-      L.geoJSON({ type: 'FeatureCollection', features: seleccionSecciones }, {
-        style: f => estiloSeccion(f, RELLENO.impresion, BORDE.impresion), interactive: false
-      }).addTo(m);
-
-      ponerVelo(m, dist);
-
-      const grupo = L.layerGroup().addTo(m);
-      const registros = etiquetas.filter(e => enMitad(e, i)).map(e => ({
-        marker: L.marker(e.polo, {
-          icon: L.divIcon({ className: 'etiqueta-wrap', html: e.html, iconSize: [0, 0] }),
-          interactive: false, keyboard: false
-        }).addTo(grupo),
-        pole0: e.pole0,
-        ringRel0: e.ringRel0,
-        anchoPorPx: e.anchoPorPx
-      }));
-      ajustarEtiquetasEn(m, registros, [], ETIQUETA.maxDetalle);
-    });
-  }
-
-  // Prepara el mapa (tamaño de hoja, encuadre, velo, estilos, hojas de detalle) y el reporte
   function prepararImpresion() {
     if (impresionPreparada) return;
     impresionPreparada = true;
@@ -825,7 +683,6 @@
     document.getElementById('pdf-distrito-sub').textContent = textoDistrito;
     document.getElementById('pdf-fecha').textContent = fecha;
 
-    // Resumen sobre el mapa: se copian los valores que se ven en el panel (ya filtrados)
     ['meta', 'recabadas', 'faltantes'].forEach(k => {
       document.getElementById('pdf-kpi-' + k).textContent = document.getElementById('kpi-' + k).textContent;
     });
@@ -837,14 +694,12 @@
       generarTablaAgrupadaPDF('🔴 SECCIONES ROJAS (De 0 a 4 firmas)', 'bg-red-600', window.seccionesRojas);
     document.getElementById('reporte-impresion').classList.remove('hidden');
 
-    // Primero el mapa adquiere el tamaño de la hoja
     document.body.classList.add('modo-impresion');
     map.invalidateSize({ animate: false });
 
     const limites = limitesDelDistrito(dist);
     if (limites && limites.isValid()) {
       encuadrarDistrito(limites);
-      if (IMPRESION_DETALLE) crearPaginasDetalle(dist, limites, textoDistrito);
     }
 
     aplicarEstiloSecciones(RELLENO.impresion, BORDE.impresion);
@@ -853,16 +708,11 @@
     ajustarEtiquetas();
   }
 
-  // Regresa la pantalla a su vista normal al cerrar el diálogo de impresión
   function terminarImpresion() {
     if (!impresionPreparada) return;
     impresionPreparada = false;
     document.body.classList.remove('modo-impresion');
     document.getElementById('reporte-impresion').classList.add('hidden');
-
-    detalleMapas.forEach(m => m.remove());
-    detalleMapas = [];
-    document.getElementById('detalle-impresion').innerHTML = '';
     cargasPendientes = [];
 
     quitarVelo();
@@ -905,8 +755,6 @@
       </div>
     `;
   }
-
-  /* ---------- Mapa principal ---------- */
 
   function actualizarVista() {
     capaContornoDistrito.clearLayers();
@@ -999,11 +847,9 @@
           </div>
         `);
 
-        // Número en el centro visual del polígono (su tamaño lo decide ajustarEtiquetas)
         if (feature.geometry) {
           const anillo = anilloPrincipal(feature.geometry);
           if (anillo.length) {
-            // Vértices en píxeles a zoom 0; a zoom z la distancia se multiplica por 2^z
             const ring0 = anillo.map(([lng, lat]) => {
               const p = map.project([lat, lng], 0);
               return [p.x, p.y];
@@ -1062,11 +908,11 @@
 
   async function imprimirPantalla() {
     prepararImpresion();
-    await Promise.all(cargasPendientes); // así los mapas no salen con zonas sin cargar
+    await Promise.all(cargasPendientes);
     window.print();
   }
 
-  window.addEventListener('beforeprint', prepararImpresion); // por si se usa Ctrl+P
+  window.addEventListener('beforeprint', prepararImpresion);
   window.addEventListener('afterprint', terminarImpresion);
   window.onload = cargarArchivosRaiz;
 </script>
