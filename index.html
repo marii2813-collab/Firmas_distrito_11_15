@@ -23,12 +23,12 @@
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Etiqueta de sección: su tamaño lo calcula ajustarEtiquetas() según el polígono */
+  /* Etiqueta de sección: centrada en el polígono y de tamaño dinámico */
   .etiqueta-wrap { pointer-events:none; }
   .etiqueta-seccion {
     position:absolute; left:0; top:0; transform:translate(-50%,-50%);
-    background:rgba(255,255,255,.85); border:1px solid rgba(0,51,102,.5); border-radius:3px;
-    font-weight:700; line-height:1.2; color:#003366; padding:0 2px; white-space:nowrap;
+    background:rgba(255,255,255,.88); border:1px solid rgba(0,51,102,.5); border-radius:3px;
+    font-weight:700; line-height:1.2; color:#003366; padding:0 3px; white-space:nowrap;
   }
 
   .badge-status { padding:2px 6px; border-radius:4px; font-weight:700; font-size:10px; color:#fff; display:inline-block; }
@@ -37,27 +37,26 @@
   .bg-meta-critico { background-color:#ef4444; }
   .bg-meta-na { background-color:#94a3b8; color:#fff; }
 
-  /* Título del mapa: solo aparece al imprimir */
+  /* Encabezado y Resumen integrado en el mapa al imprimir */
   #titulo-mapa { display:none; }
 
-  /* Modo impresión (lo activan el botón o Ctrl+P).
-     El mapa ocupa la primera hoja A4 horizontal: 297 mm - 2 x 8 mm = 281 mm (~1062 px).
-     Usamos 1040 px de ancho y 610 px de alto para dejar margen. */
   body.modo-impresion #header-bar,
   body.modo-impresion #sidebar,
   body.modo-impresion #btn-panel,
   body.modo-impresion #leyenda,
   body.modo-impresion .leaflet-control-zoom { display:none !important; }
   body.modo-impresion #app { display:block !important; height:auto !important; overflow:visible !important; }
-  body.modo-impresion #mapa-wrap { flex:none; width:1040px; height:610px; }
-  body.modo-impresion #titulo-mapa { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; width:1040px; margin:0 0 6px; padding-bottom:4px; border-bottom:2px solid var(--azul); }
+  body.modo-impresion #mapa-wrap { flex:none; width:1040px; height:520px; }
+  
+  body.modo-impresion #titulo-mapa { 
+    display:flex; justify-content:space-between; align-items:flex-end; gap:16px; 
+    width:1040px; margin:0 0 8px; padding-bottom:6px; border-bottom:2px solid var(--azul); 
+  }
 
   @media print {
     @page { size:A4 landscape; margin:8mm; }
-    /* Conserva fondos y colores aunque el navegador tenga "Gráficos de fondo" desmarcado */
     * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     body { background:#fff !important; }
-    /* El reporte de tablas empieza en la hoja 2 */
     #reporte-impresion { break-before:page; page-break-before:always; }
     #pdf-agrupado-container > div, tr { break-inside:avoid; }
   }
@@ -78,18 +77,22 @@
   </div>
 </header>
 
-<!-- Título y leyenda de colores: solo se ven al imprimir, encima del mapa -->
+<!-- Título, Resumen integrado y leyenda de colores: solo se ven al imprimir encima del mapa -->
 <div id="titulo-mapa">
   <div>
-    <h2 class="text-lg font-bold text-blue-900">Mapa de Avance de Firmas</h2>
+    <h2 class="text-base font-bold text-blue-900">Mapa de Avance de Firmas</h2>
     <p id="titulo-mapa-distrito" class="text-xs font-bold text-slate-600"></p>
   </div>
+  <!-- Resumen Ejecutivo Integrado directamente en el mapa impreso -->
+  <div class="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded text-xs flex items-center gap-4">
+    <div><b>Meta:</b> <span id="print-kpi-meta" class="text-blue-900">0</span></div>
+    <div><b>Recabadas:</b> <span id="print-kpi-recabadas" class="text-green-600">0</span></div>
+    <div><b>Faltantes:</b> <span id="print-kpi-faltantes" class="text-red-600">0</span></div>
+  </div>
   <div class="text-xs text-slate-700 flex items-center gap-3">
-    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Verde: 10 o más</span>
-    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span> Amarillo: 5 a 9</span>
-    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Rojo: 0 a 4</span>
-    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-slate-400 inline-block"></span> Sin dato</span>
-    <span class="text-slate-500 ml-3">Generado: <span id="titulo-mapa-fecha"></span></span>
+    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Verde</span>
+    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span> Amarillo</span>
+    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Rojo</span>
   </div>
 </div>
 
@@ -169,7 +172,7 @@
 <div id="reporte-impresion" class="p-6 bg-white hidden">
   <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
     <div>
-      <h1 class="text-2xl font-bold text-blue-900">Reporte General de Avance de Firmas</h1>
+      <h1 class="text-2xl font-bold text-blue-900">Reporte Detallado de Avance de Firmas</h1>
       <p id="pdf-distrito-sub" class="text-sm font-bold text-slate-600">Distrito Local</p>
     </div>
     <div class="text-right text-xs text-slate-500">
@@ -178,33 +181,14 @@
     </div>
   </div>
 
-  <!-- Resumen general: mismo diseño que el panel, para el PDF -->
-  <div class="mb-5 max-w-xl p-3 bg-slate-50 rounded-lg border border-slate-200">
-    <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Resumen General de Firmas</h2>
-    <div class="grid grid-cols-3 gap-2 text-center">
-      <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Meta Total</span><b id="pdf-kpi-meta" class="text-lg text-blue-900">0</b></div>
-      <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Recabadas</span><b id="pdf-kpi-recabadas" class="text-lg text-green-600">0</b></div>
-      <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Faltantes</span><b id="pdf-kpi-faltantes" class="text-lg text-red-600">0</b></div>
-    </div>
-    <div class="w-full bg-slate-200 rounded-full h-2.5 mt-3 overflow-hidden">
-      <div id="pdf-kpi-barra" class="bg-green-500 h-2.5 rounded-full" style="width: 0%"></div>
-    </div>
-  </div>
-
-  <div id="pdf-agrupado-container" class="space-y-6">
-    <!-- Se llena dinámicamente con tablas separadas por color -->
-  </div>
+  <div id="pdf-agrupado-container" class="space-y-6"></div>
 </div>
 
 <script>
   const META_POR_SECCION = 10;
-
-  // Relleno translúcido: con poca opacidad las calles se ven por debajo de cada sección
   const RELLENO = { pantalla: 0.55, impresion: 0.3 };
-  // Tamaño de la etiqueta de sección (px): se ajusta a cada polígono entre estos límites
-  const ETIQUETA = { max: 8, min: 5 };
+  const ETIQUETA = { max: 9, min: 4 };
 
-  // SVG (no canvas): las líneas salen nítidas al guardar en PDF
   let map = L.map('map', { zoomSnap: 0.25 }).setView([19.395, -99.095], 13);
   map.on('zoomend moveend', ajustarEtiquetas);
 
@@ -220,9 +204,8 @@
   let datosSeccionesGeoJSON = null;
   let datosDistrito11GeoJSON = null;
   let datosDistrito15GeoJSON = null;
-
   let opacidadRelleno = RELLENO.pantalla;
-  let etiquetas = [];              // { marker, bounds, anchoPorPx }
+  let etiquetas = [];
   let vistaAntesDeImprimir = null;
   let impresionPreparada = false;
 
@@ -264,12 +247,9 @@
   function calcularEstatus(recabadas) {
     if (recabadas >= 10) return 'VERDE';
     if (recabadas >= 5) return 'AMARILLO';
-    return 'ROJO'; // 0 a 4
+    return 'ROJO';
   }
 
-  /* ---------- Geometría: punto donde va la etiqueta de cada sección ---------- */
-
-  // Suma de productos cruzados del anillo (es 2 veces el área con signo)
   function sumaCruzada(anillo) {
     let S = 0;
     for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
@@ -278,7 +258,6 @@
     return S;
   }
 
-  // Anillo exterior más grande de un Polygon o MultiPolygon (coordenadas [lng, lat])
   function anilloPrincipal(geom) {
     const poligonos = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
     let mejor = [], mayor = -1;
@@ -289,7 +268,6 @@
     return mejor;
   }
 
-  // Centroide geométrico del anillo
   function centroideAnillo(anillo) {
     const S = sumaCruzada(anillo);
     if (Math.abs(S) < 1e-12) {
@@ -307,7 +285,6 @@
     return [cx / (3 * S), cy / (3 * S)];
   }
 
-  // ¿El punto cae dentro del anillo? (cruce de rayos)
   function dentroDeAnillo(pt, anillo) {
     let dentro = false;
     for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
@@ -321,8 +298,6 @@
     return dentro;
   }
 
-  // Centroide si cae dentro del polígono; si no (forma irregular),
-  // el punto interior más cercano al centroide
   function puntoInterior(anillo) {
     const c = centroideAnillo(anillo);
     if (dentroDeAnillo(c, anillo)) return c;
@@ -342,18 +317,12 @@
     return mejor;
   }
 
-  /* ---------- Etiquetas: tamaño según el polígono ---------- */
-
   const medidorTexto = document.createElement('canvas').getContext('2d');
-
-  // Ancho del número por cada píxel de tamaño de letra (en negrita)
   function anchoPorPixel(texto) {
     medidorTexto.font = '700 100px system-ui, -apple-system, sans-serif';
     return medidorTexto.measureText(texto).width / 100;
   }
 
-  // Da a cada etiqueta el mayor tamaño que cabe dentro de su polígono, sin pasar de ETIQUETA.max.
-  // Si ni siquiera cabe en ETIQUETA.min, la etiqueta se oculta.
   function ajustarEtiquetas() {
     etiquetas.forEach(e => {
       const span = e.marker.getElement()?.querySelector('.etiqueta-seccion');
@@ -364,9 +333,8 @@
       const ancho = Math.abs(b.x - a.x);
       const alto = Math.abs(b.y - a.y);
 
-      // Se deja 20 % de margen para que el número no toque el borde del polígono
-      const fsAncho = (ancho * 0.8 - 6) / e.anchoPorPx;
-      const fsAlto = (alto * 0.8 - 2) / 1.2;
+      const fsAncho = (ancho * 0.75 - 4) / e.anchoPorPx;
+      const fsAlto = (alto * 0.75 - 2) / 1.2;
       const fs = Math.min(ETIQUETA.max, fsAncho, fsAlto);
 
       if (!(fs >= ETIQUETA.min)) {
@@ -378,13 +346,10 @@
     });
   }
 
-  // Cambia la opacidad del relleno de todas las secciones
   function aplicarRelleno(opacidad) {
     opacidadRelleno = opacidad;
     capaSecciones.eachLayer(grupo => grupo.eachLayer(poligono => poligono.setStyle({ fillOpacity: opacidad })));
   }
-
-  /* ---------- Mapa ---------- */
 
   function actualizarVista() {
     capaContornoDistrito.clearLayers();
@@ -449,13 +414,10 @@
         }
 
         const recabadas = parseFloat(valFirmas) || 0;
-        let color = '#ef4444'; // Rojo (0 a 4)
+        let color = '#ef4444';
 
-        if (recabadas >= 10) {
-          color = '#22c55e'; // Verde (10+)
-        } else if (recabadas >= 5) {
-          color = '#eab308'; // Amarillo (5 a 9)
-        }
+        if (recabadas >= 10) color = '#22c55e';
+        else if (recabadas >= 5) color = '#eab308';
 
         return { color: '#003366', weight: 1.5, fillColor: color, fillOpacity: opacidadRelleno };
       },
@@ -509,7 +471,6 @@
           </div>
         `);
 
-        // Etiqueta en el interior del polígono; ajustarEtiquetas() le da el tamaño
         if (feature.geometry) {
           const anillo = anilloPrincipal(feature.geometry);
           if (anillo.length) {
@@ -561,9 +522,6 @@
     ajustarEtiquetas();
   }
 
-  /* ---------- Impresión / PDF ---------- */
-
-  // Contornos oficiales del distrito elegido (o de ambos), para encuadrar todo el mapa
   function limitesDelDistrito(dist) {
     const fuentes = [];
     if ((dist === '11' || dist === 'TODOS') && datosDistrito11GeoJSON) fuentes.push(datosDistrito11GeoJSON);
@@ -578,7 +536,6 @@
     return limites;
   }
 
-  // Espera a que el mapa base termine de descargar sus teselas antes de imprimir
   function esperarTeselas() {
     return new Promise(resolve => {
       let empezo = false, t1, t2;
@@ -592,8 +549,8 @@
       };
       capaBase.on('tileloadstart', alEmpezar);
       capaBase.on('load', fin);
-      t1 = setTimeout(() => { if (!empezo) fin(); }, 1000); // no había teselas nuevas que bajar
-      t2 = setTimeout(fin, 8000);                            // tope de seguridad
+      t1 = setTimeout(() => { if (!empezo) fin(); }, 1000);
+      t2 = setTimeout(fin, 8000);
     });
   }
 
@@ -629,7 +586,6 @@
     `;
   }
 
-  // Prepara el mapa (tamaño de hoja, encuadre, relleno ligero) y el reporte
   function prepararImpresion() {
     if (impresionPreparada) return;
     impresionPreparada = true;
@@ -640,15 +596,13 @@
     const fecha = new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' });
 
     document.getElementById('titulo-mapa-distrito').textContent = textoDistrito;
-    document.getElementById('titulo-mapa-fecha').textContent = fecha;
     document.getElementById('pdf-distrito-sub').textContent = textoDistrito;
     document.getElementById('pdf-fecha').textContent = fecha;
 
-    // Resumen: se copian los valores que se ven en el panel (ya filtrados por distrito y estatus)
-    ['meta', 'recabadas', 'faltantes'].forEach(k => {
-      document.getElementById('pdf-kpi-' + k).textContent = document.getElementById('kpi-' + k).textContent;
-    });
-    document.getElementById('pdf-kpi-barra').style.width = document.getElementById('kpi-barra').style.width;
+    // Sincronizar el resumen integrado en el mapa impreso con los valores actuales
+    document.getElementById('print-kpi-meta').textContent = document.getElementById('kpi-meta').textContent;
+    document.getElementById('print-kpi-recabadas').textContent = document.getElementById('kpi-recabadas').textContent;
+    document.getElementById('print-kpi-faltantes').textContent = document.getElementById('kpi-faltantes').textContent;
 
     document.getElementById('pdf-agrupado-container').innerHTML =
       generarTablaAgrupadaPDF('🟢 SECCIONES VERDES (10 o más firmas)', 'bg-green-600', window.seccionesVerdes) +
@@ -656,7 +610,6 @@
       generarTablaAgrupadaPDF('🔴 SECCIONES ROJAS (De 0 a 4 firmas)', 'bg-red-600', window.seccionesRojas);
     document.getElementById('reporte-impresion').classList.remove('hidden');
 
-    // Primero se cambia el tamaño del mapa a la hoja, luego se encuadra el distrito completo
     document.body.classList.add('modo-impresion');
     map.invalidateSize({ animate: false });
     const limites = limitesDelDistrito(dist);
@@ -667,7 +620,6 @@
     ajustarEtiquetas();
   }
 
-  // Regresa la pantalla a su vista normal al cerrar el diálogo de impresión
   function terminarImpresion() {
     if (!impresionPreparada) return;
     impresionPreparada = false;
@@ -683,11 +635,11 @@
 
   async function imprimirPantalla() {
     prepararImpresion();
-    await esperarTeselas(); // así el mapa no sale con zonas sin cargar
+    await esperarTeselas();
     window.print();
   }
 
-  window.addEventListener('beforeprint', prepararImpresion); // por si se usa Ctrl+P
+  window.addEventListener('beforeprint', prepararImpresion);
   window.addEventListener('afterprint', terminarImpresion);
   window.onload = cargarArchivosRaiz;
 </script>
