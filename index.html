@@ -3,11 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Control y Avance de Firmas Electorales</title>
+<title>Control de Firmas Electorales</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <style>
   :root { --azul:#003366; --fondo:#f8fafc; --borde:#e2e8f0; }
@@ -26,7 +25,7 @@
 
   /* Etiquetas dinámicas adaptables con el zoom */
   .etiqueta-seccion {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.95);
     border: 1px solid #003366;
     border-radius: 4px;
     font-weight: 800;
@@ -82,12 +81,13 @@
       </div>
     </div>
 
-    <!-- FILTROS -->
+    <!-- FILTROS DE DISTRITO LOCAL -->
     <div>
       <label class="block text-xs font-bold text-slate-700 mb-1">Distrito Local</label>
-      <select id="select-distrito" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="cargarDatosDistrito()">
-        <option value="Distrito Local 15">Distrito Local 15</option>
-        <option value="Distrito Local 11">Distrito Local 11</option>
+      <select id="select-distrito" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="actualizarVista()">
+        <option value="TODOS">Todos los Distritos</option>
+        <option value="15">Distrito Local 15</option>
+        <option value="11">Distrito Local 11</option>
       </select>
     </div>
 
@@ -118,9 +118,9 @@
     
     <div id="leyenda" class="flotante space-y-1">
       <div class="font-bold text-xs text-slate-700 mb-1">Semaforización de Firmas</div>
-      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Meta Completada (100%)</div>
-      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span> En Proceso (>50%)</div>
-      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Crítico / Prioritaria (<50%)</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Meta Completada (Faltan 0)</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span> En Proceso (>0 recabadas)</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Sin Avance / Crítico</div>
     </div>
   </div>
 </div>
@@ -136,7 +136,6 @@
       <p>Generado el: <span id="pdf-fecha"></span></p>
     </div>
   </div>
-  <div id="mapa-print-container" class="w-full h-[450px] border rounded mb-4"></div>
   <table class="w-full text-left text-xs border">
     <thead class="bg-blue-900 text-white">
       <tr>
@@ -152,134 +151,197 @@
 </div>
 
 <script>
-  let map = L.map('map', { preferCanvas: true }).setView([19.4018, -99.1329], 13);
+  let map = L.map('map', { preferCanvas: true }).setView([19.395, -99.095], 13);
   
-  // Capa base con visibilidad de calles clara (OpenStreetMap)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
     maxZoom: 19
   }).addTo(map);
 
+  let capaContornoDistrito = L.layerGroup().addTo(map);
   let capaSecciones = L.layerGroup().addTo(map);
+
+  let datosSeccionesGeoJSON = null;
+  let datosDistrito11GeoJSON = null;
+  let datosDistrito15GeoJSON = null;
 
   function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('colapsado');
     setTimeout(() => map.invalidateSize(), 300);
   }
 
-  // Carga e integración de datos
-  async function cargarDatosDistrito() {
-    const distrito = document.getElementById('select-distrito').value;
-    capaSecciones.clearLayers();
-
+  // Cargar todos los archivos directamente desde la RAÍZ del repositorio
+  async function cargarArchivosRaiz() {
     try {
-      // Intentar cargar la capa de Secciones Electorales del repositorio
-      const response = await fetch(`capas/${distrito}.-Secciones electorales.geojson`);
-      const data = await response.json();
+      // 1. Cargar Secciones
+      const resSec = await fetch('Secciones_firmas.geojson');
+      if (resSec.ok) datosSeccionesGeoJSON = await resSec.json();
 
-      let totalMeta = 0;
-      let totalRecabadas = 0;
-      const tbody = document.getElementById('tabla-secciones-body');
-      tbody.innerHTML = '';
+      // 2. Cargar Contorno Distrito 11 (Archivos sueltos en raíz)
+      const resD11 = await fetch('Distrito Local 11.geojson');
+      if (resD11.ok) datosDistrito11GeoJSON = await resD11.json();
 
-      const bounds = [];
+      // 3. Cargar Contorno Distrito 15 (Archivos sueltos en raíz)
+      const resD15 = await fetch('Distrito Local 15.geojson');
+      if (resD15.ok) datosDistrito15GeoJSON = await resD15.json();
 
-      L.geoJSON(data, {
-        style: function(feature) {
-          // Extraer variables o asignar valores de prueba dinámicos si faltan en las propiedades
-          const meta = feature.properties.meta || 100;
-          const recabadas = feature.properties.firmas || Math.floor(Math.random() * 120);
-          const faltantes = Math.max(0, meta - recabadas);
-          
-          let color = '#ef4444'; // Rojo por defecto
-          if (faltantes === 0) color = '#22c55e'; // Verde
-          else if (recabadas >= meta * 0.5) color = '#eab308'; // Amarillo
-
-          return { color: '#003366', weight: 1.5, fillColor: color, fillOpacity: 0.45 };
-        },
-        onEachFeature: function(feature, layer) {
-          const seccion = feature.properties.SECCION || feature.properties.seccion || 'N/A';
-          const meta = feature.properties.meta || 100;
-          const recabadas = feature.properties.firmas || Math.floor(Math.random() * 120);
-          const faltantes = Math.max(0, meta - recabadas);
-          
-          totalMeta += meta;
-          totalRecabadas += recabadas;
-
-          let badgeClass = 'bg-meta-critico';
-          let estadoTexto = 'Crítico';
-          if (faltantes === 0) { badgeClass = 'bg-meta-ok'; estadoTexto = 'Completado'; }
-          else if (recabadas >= meta * 0.5) { badgeClass = 'bg-meta-proceso'; estadoTexto = 'En Proceso'; }
-
-          // Mostrar etiqueta de Sección que se ajusta y permanece legible al hacer zoom
-          layer.bindTooltip(`Sección ${seccion}`, { permanent: true, direction: 'center', className: 'etiqueta-seccion' });
-
-          // Popup interactivo
-          layer.bindPopup(`
-            <div class="text-xs p-1">
-              <b class="text-sm text-blue-900">Sección Electoral ${seccion}</b><br>
-              <b>Meta de Firmas:</b> ${meta}<br>
-              <b>Firmas Recabadas:</b> ${recabadas}<br>
-              <b>Firmas Faltantes:</b> ${faltantes}<br>
-              <span class="badge-status ${badgeClass} mt-1">${estadoTexto}</span>
-            </div>
-          `);
-
-          // Insertar fila en el panel lateral
-          const tr = document.createElement('tr');
-          tr.className = 'border-b hover:bg-slate-50 cursor-pointer';
-          tr.innerHTML = `
-            <td class="p-2 font-bold text-blue-900">${seccion}</td>
-            <td class="p-2 text-center">${meta}</td>
-            <td class="p-2 text-center font-semibold text-green-700">${recabadas}</td>
-            <td class="p-2 text-center font-semibold text-red-600">${faltantes}</td>
-            <td class="p-2 text-center"><span class="badge-status ${badgeClass}">${estadoTexto}</span></td>
-          `;
-          tr.onclick = () => map.fitBounds(layer.getBounds(), { padding: [20, 20] });
-          tbody.appendChild(tr);
-
-          capaSecciones.addLayer(layer);
-          bounds.push(layer.getBounds());
-        }
-      });
-
-      // Actualizar indicadores principales (KPIs)
-      const totalFaltantes = Math.max(0, totalMeta - totalRecabadas);
-      const porcentaje = totalMeta > 0 ? Math.min(100, Math.round((totalRecabadas / totalMeta) * 100)) : 0;
-
-      document.getElementById('kpi-meta').textContent = totalMeta;
-      document.getElementById('kpi-recabadas').textContent = totalRecabadas;
-      document.getElementById('kpi-faltantes').textContent = totalFaltantes;
-      document.getElementById('kpi-barra').style.width = porcentaje + '%';
-
-      if (bounds.length > 0) {
-        map.fitBounds(L.featureGroup(capaSecciones.getLayers()).getBounds(), { padding: [30, 30] });
-      }
+      actualizarVista();
 
     } catch (error) {
-      console.warn("Aviso: No se pudo cargar el archivo local GeoJSON.", error);
+      console.error("Error cargando archivos GeoJSON desde la raíz:", error);
     }
   }
 
-  // Ajustar visualización de etiquetas dinámicamente según el nivel de zoom
+  function actualizarVista() {
+    capaContornoDistrito.clearLayers();
+    capaSecciones.clearLayers();
+
+    const distritoSeleccionado = document.getElementById('select-distrito').value;
+
+    // A. DIBUJAR CONTORNO DE DISTRITOS
+    if ((distritoSeleccionado === '11' || distritoSeleccionado === 'TODOS') && datosDistrito11GeoJSON) {
+      L.geoJSON(datosDistrito11GeoJSON, {
+        style: { color: '#002244', weight: 3.5, fillOpacity: 0.03, dashArray: '6, 6' }
+      }).addTo(capaContornoDistrito);
+    }
+
+    if ((distritoSeleccionado === '15' || distritoSeleccionado === 'TODOS') && datosDistrito15GeoJSON) {
+      L.geoJSON(datosDistrito15GeoJSON, {
+        style: { color: '#8b0000', weight: 3.5, fillOpacity: 0.03, dashArray: '6, 6' }
+      }).addTo(capaContornoDistrito);
+    }
+
+    // B. DIBUJAR SECCIONES ELECTORALES Y SEMÁFORO DE FIRMAS
+    if (!datosSeccionesGeoJSON) return;
+
+    const tbody = document.getElementById('tabla-secciones-body');
+    tbody.innerHTML = '';
+
+    let totalMeta = 0;
+    let totalRecabadas = 0;
+    let totalFaltantes = 0;
+
+    const layerGroup = L.geoJSON(datosSeccionesGeoJSON, {
+      filter: function(feature) {
+        if (distritoSeleccionado === 'TODOS') return true;
+        const distL = String(feature.properties.DISTRITO_L || '').trim();
+        return distL === distritoSeleccionado;
+      },
+      style: function(feature) {
+        const recabadas = parseFloat(feature.properties["TOTAL DE FIRMAS"]) || 0;
+        const faltantesProps = feature.properties["FALTANTES"];
+        
+        let faltantes = 0;
+        if (faltantesProps !== null && faltantesProps !== undefined && faltantesProps !== '') {
+          faltantes = parseFloat(faltantesProps);
+        } else {
+          faltantes = Math.max(0, 10 - recabadas); // Meta genérica de 10 si es NULL
+        }
+
+        let color = '#ef4444'; // Rojo (Sin avance)
+        if (faltantes === 0) {
+          color = '#22c55e'; // Verde (Completada)
+        } else if (recabadas > 0) {
+          color = '#eab308'; // Amarillo (En Proceso)
+        }
+
+        return {
+          color: '#003366',
+          weight: 1.5,
+          fillColor: color,
+          fillOpacity: 0.55
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        const seccion = feature.properties.SECCION || 'N/A';
+        const recabadas = parseFloat(feature.properties["TOTAL DE FIRMAS"]) || 0;
+        
+        let faltantes = 0;
+        const faltantesProps = feature.properties["FALTANTES"];
+        if (faltantesProps !== null && faltantesProps !== undefined && faltantesProps !== '') {
+          faltantes = parseFloat(faltantesProps);
+        } else {
+          faltantes = Math.max(0, 10 - recabadas);
+        }
+
+        const meta = recabadas + faltantes;
+
+        totalMeta += meta;
+        totalRecabadas += recabadas;
+        totalFaltantes += faltantes;
+
+        let badgeClass = 'bg-meta-critico';
+        let estadoTexto = 'Sin Avance';
+        if (faltantes === 0) {
+          badgeClass = 'bg-meta-ok';
+          estadoTexto = 'Completado';
+        } else if (recabadas > 0) {
+          badgeClass = 'bg-meta-proceso';
+          estadoTexto = 'En Proceso';
+        }
+
+        // Etiqueta permanente centrada de la Sección
+        layer.bindTooltip(`${seccion}`, { permanent: true, direction: 'center', className: 'etiqueta-seccion' });
+
+        // Popup interactivo al dar clic
+        layer.bindPopup(`
+          <div class="text-xs p-1">
+            <b class="text-sm text-blue-900">Sección Electoral ${seccion}</b><br>
+            <b>Distrito Local:</b> ${feature.properties.DISTRITO_L || 'N/A'}<br>
+            <b>Meta Estimada:</b> ${meta}<br>
+            <b>Firmas Recabadas:</b> ${recabadas}<br>
+            <b>Firmas Faltantes:</b> ${faltantes}<br>
+            <span class="badge-status ${badgeClass} mt-1">${estadoTexto}</span>
+          </div>
+        `);
+
+        // Insertar fila en la tabla lateral
+        const tr = document.createElement('tr');
+        tr.className = 'border-b hover:bg-slate-50 cursor-pointer';
+        tr.innerHTML = `
+          <td class="p-2 font-bold text-blue-900">${seccion}</td>
+          <td class="p-2 text-center">${meta}</td>
+          <td class="p-2 text-center font-semibold text-green-700">${recabadas}</td>
+          <td class="p-2 text-center font-semibold text-red-600">${faltantes}</td>
+          <td class="p-2 text-center"><span class="badge-status ${badgeClass}">${estadoTexto}</span></td>
+        `;
+        tr.onclick = () => map.fitBounds(layer.getBounds(), { padding: [30, 30] });
+        tbody.appendChild(tr);
+      }
+    });
+
+    capaSecciones.addLayer(layerGroup);
+
+    // Actualizar Números Principales (KPIs)
+    document.getElementById('kpi-meta').textContent = totalMeta;
+    document.getElementById('kpi-recabadas').textContent = totalRecabadas;
+    document.getElementById('kpi-faltantes').textContent = totalFaltantes;
+
+    const porcentaje = totalMeta > 0 ? Math.min(100, Math.round((totalRecabadas / totalMeta) * 100)) : 0;
+    document.getElementById('kpi-barra').style.width = porcentaje + '%';
+
+    // Auto-Ajustar la vista del mapa a las secciones
+    if (layerGroup.getLayers().length > 0) {
+      map.fitBounds(layerGroup.getBounds(), { padding: [25, 25] });
+    }
+  }
+
+  // Control de visibilidad de etiquetas según Zoom
   map.on('zoomend', function() {
-    const zoomActual = map.getZoom();
+    const currentZoom = map.getZoom();
     document.querySelectorAll('.etiqueta-seccion').forEach(el => {
-      el.style.display = zoomActual < 13 ? 'none' : 'block';
+      el.style.display = currentZoom < 13 ? 'none' : 'block';
     });
   });
 
-  // Generación e Impresión del Mapa en Formato Horizontal
   function imprimirMapaHorizontal() {
-    document.getElementById('pdf-distrito-sub').textContent = document.getElementById('select-distrito').value;
+    document.getElementById('pdf-distrito-sub').textContent = "Distrito " + document.getElementById('select-distrito').value;
     document.getElementById('pdf-fecha').textContent = new Date().toLocaleString('es-MX');
     document.getElementById('pdf-tabla-body').innerHTML = document.getElementById('tabla-secciones-body').innerHTML;
-    
     window.print();
   }
 
-  // Inicialización
-  window.onload = cargarDatosDistrito;
+  window.onload = cargarArchivosRaiz;
 </script>
 </body>
 </html>
