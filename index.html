@@ -23,9 +23,9 @@
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Etiquetas sutiles y no megarreferenciadas/protagonistas */
+  /* Etiquetas sutiles adaptables */
   .etiqueta-seccion {
-    background: rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.85);
     border: 1px solid rgba(0, 51, 102, 0.5);
     border-radius: 3px;
     font-weight: 700;
@@ -43,14 +43,15 @@
   .bg-meta-critico { background-color: #ef4444; }
   .bg-meta-na { background-color: #94a3b8; color: #fff; }
 
-  /* Estilos especiales para Impresión / PDF */
+  /* Estilos para impresión en formato horizontal (Landscape) */
   @media print {
+    @page { size: A4 landscape; margin: 10mm; }
     body { background: white !important; font-size: 10pt; }
     #header-bar, #sidebar, #btn-panel, #leyenda, .leaflet-control-container { display: none !important; }
     #app { height: auto !important; overflow: visible !important; display: block !important; }
-    #mapa-wrap { height: 400px !important; page-break-after: always; position: relative !important; }
-    #map { height: 400px !important; position: relative !important; }
-    #reporte-impresion { display: block !important; page-break-before: always; }
+    #mapa-wrap { height: 450px !important; width: 100% !important; position: relative !important; page-break-after: always; }
+    #map { height: 450px !important; width: 100% !important; position: relative !important; }
+    #reporte-impresion { display: block !important; }
   }
 </style>
 </head>
@@ -60,11 +61,11 @@
 <header id="header-bar" class="bg-[#003366] text-white h-[70px] px-6 flex items-center justify-between shadow-md border-b-2 border-blue-400 flex-none">
   <div>
     <h1 class="text-lg font-bold tracking-wide">Control de Firmas Electorales</h1>
-    <p class="text-xs text-blue-200">Monitoreo de Avance y Metas por Sección Electoral</p>
+    <p class="text-xs text-blue-200">Monitoreo de Avance (Verde: 10+ | Amarillo: 5 a 9 | Rojo: 0 a 4)</p>
   </div>
   <div class="flex items-center gap-3">
     <button onclick="imprimirPantalla()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow">
-      🖨️ Imprimir / Guardar PDF
+      🖨️ Imprimir / Guardar PDF Horizontal
     </button>
   </div>
 </header>
@@ -77,7 +78,7 @@
     <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
       <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Resumen General de Firmas</h2>
       <div class="grid grid-cols-3 gap-2 text-center">
-        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Meta</span><b id="kpi-meta" class="text-base text-blue-900">0</b></div>
+        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Meta Total</span><b id="kpi-meta" class="text-base text-blue-900">0</b></div>
         <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Recabadas</span><b id="kpi-recabadas" class="text-base text-green-600">0</b></div>
         <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Faltantes</span><b id="kpi-faltantes" class="text-base text-red-600">0</b></div>
       </div>
@@ -96,14 +97,14 @@
       </select>
     </div>
 
-    <!-- FILTRO POR SEMÁFORO (VERDE, AMARILLO, ROJO, GRIS) -->
+    <!-- FILTRO POR SEMÁFORO -->
     <div>
       <label class="block text-xs font-bold text-slate-700 mb-1">Filtrar por Estatus</label>
       <select id="select-estatus" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="actualizarVista()">
         <option value="TODOS">Ver Todos los Estatus</option>
-        <option value="VERDE">🟢 Solo Verdes (Completados)</option>
-        <option value="AMARILLO">🟡 Solo Amarillos (En Proceso)</option>
-        <option value="ROJO">🔴 Solo Rojos (Críticos / Sin avance)</option>
+        <option value="VERDE">🟢 Solo Verdes (10 o más)</option>
+        <option value="AMARILLO">🟡 Solo Amarillos (5 a 9)</option>
+        <option value="ROJO">🔴 Solo Rojos (0 a 4)</option>
         <option value="GRIS">⚪ Solo Grises (Sin Dato / N/A)</option>
       </select>
     </div>
@@ -121,9 +122,7 @@
             <th class="p-2 text-center">Estatus</th>
           </tr>
         </thead>
-        <tbody id="tabla-secciones-body">
-          <!-- Se llena dinámicamente -->
-        </tbody>
+        <tbody id="tabla-secciones-body"></tbody>
       </table>
     </div>
   </aside>
@@ -134,41 +133,35 @@
     <button id="btn-panel" class="flotante" onclick="toggleSidebar()">☰ Panel</button>
     
     <div id="leyenda" class="flotante space-y-1">
-      <div class="font-bold text-xs text-slate-700 mb-1">Semaforización de Firmas</div>
-      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Meta Completada</div>
-      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span> En Proceso</div>
-      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Crítico / Sin avance</div>
+      <div class="font-bold text-xs text-slate-700 mb-1">Semaforización</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Verde: 10 o más</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span> Amarillo: 5 a 9</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Rojo: 0 a 4</div>
       <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-slate-400 inline-block"></span> Sin Dato (N/A)</div>
     </div>
   </div>
 </div>
 
-<!-- VISTA DE REPORTE IMPRESO / PDF (AL FINAL DE LA PÁGINA) -->
+<!-- CONTENEDOR OCULTO PARA IMPRESIÓN Y PDF HORIZONTAL (AGRUPADO) -->
 <div id="reporte-impresion" class="p-6 bg-white hidden">
   <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
     <div>
-      <h1 class="text-2xl font-bold text-blue-900">Reporte de Avance de Firmas Electorales</h1>
+      <h1 class="text-2xl font-bold text-blue-900">Reporte General de Avance de Firmas</h1>
       <p id="pdf-distrito-sub" class="text-sm font-bold text-slate-600">Distrito Local</p>
     </div>
     <div class="text-right text-xs text-slate-500">
-      <p>Fecha: <span id="pdf-fecha"></span></p>
+      <p>Generado: <span id="pdf-fecha"></span></p>
+      <p>Meta por sección: <b>10 firmas</b></p>
     </div>
   </div>
-  <table class="w-full text-left text-xs border border-collapse">
-    <thead class="bg-blue-900 text-white">
-      <tr>
-        <th class="p-2">Sección</th>
-        <th class="p-2 text-center">Meta</th>
-        <th class="p-2 text-center">Firmas Recabadas</th>
-        <th class="p-2 text-center">Firmas Faltantes</th>
-        <th class="p-2 text-center">Estatus</th>
-      </tr>
-    </thead>
-    <tbody id="pdf-tabla-body"></tbody>
-  </table>
+
+  <div id="pdf-agrupado-container" class="space-y-6">
+    <!-- Se llena dinámicamente con tablas separadas por color -->
+  </div>
 </div>
 
 <script>
+  const META_POR_SECCION = 10;
   let map = L.map('map', { preferCanvas: true }).setView([19.395, -99.095], 13);
   
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -188,7 +181,6 @@
     setTimeout(() => map.invalidateSize(), 300);
   }
 
-  // Función para obtener los valores ignorando espacios extras en los nombres de las columnas
   function obtenerValorAtributo(props, nombresPosibles) {
     if (!props) return null;
     for (let p in props) {
@@ -215,8 +207,14 @@
 
       actualizarVista();
     } catch (error) {
-      console.error("Error cargando archivos GeoJSON:", error);
+      console.error("Error cargando GeoJSON:", error);
     }
+  }
+
+  function calcularEstatus(recabadas) {
+    if (recabadas >= 10) return 'VERDE';
+    if (recabadas >= 5) return 'AMARILLO';
+    return 'ROJO'; // 0 a 4
   }
 
   function actualizarVista() {
@@ -226,7 +224,6 @@
     const distritoSeleccionado = document.getElementById('select-distrito').value;
     const estatusSeleccionado = document.getElementById('select-estatus').value;
 
-    // DIBUJAR LÍMITES DE DISTRITOS
     if ((distritoSeleccionado === '11' || distritoSeleccionado === 'TODOS') && datosDistrito11GeoJSON) {
       L.geoJSON(datosDistrito11GeoJSON, {
         style: { color: '#002244', weight: 3.5, fillOpacity: 0.03, dashArray: '6, 6' }
@@ -248,27 +245,23 @@
     let totalRecabadas = 0;
     let totalFaltantes = 0;
 
+    window.seccionesVerdes = [];
+    window.seccionesAmarillas = [];
+    window.seccionesRojas = [];
+
     const layerGroup = L.geoJSON(datosSeccionesGeoJSON, {
       filter: function(feature) {
-        // Filtro por Distrito
         if (distritoSeleccionado !== 'TODOS') {
           const distL = String(feature.properties.DISTRITO_L || '').trim();
           if (distL !== distritoSeleccionado) return false;
         }
 
-        // Filtro por Estatus
         const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
-        const valFaltantes = obtenerValorAtributo(feature.properties, ["FALTANTES"]);
-
         let tipoEstatus = 'GRIS';
+
         if (valFirmas !== null && valFirmas !== undefined && valFirmas !== '') {
           const recabadas = parseFloat(valFirmas) || 0;
-          const faltantes = parseFloat(valFaltantes) || 0;
-          const meta = recabadas + faltantes;
-
-          if (faltantes === 0 || recabadas >= meta) tipoEstatus = 'VERDE';
-          else if (recabadas > 0) tipoEstatus = 'AMARILLO';
-          else tipoEstatus = 'ROJO';
+          tipoEstatus = calcularEstatus(recabadas);
         }
 
         if (estatusSeleccionado !== 'TODOS' && estatusSeleccionado !== tipoEstatus) {
@@ -279,21 +272,18 @@
       },
       style: function(feature) {
         const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
-        const valFaltantes = obtenerValorAtributo(feature.properties, ["FALTANTES"]);
 
         if (valFirmas === null || valFirmas === undefined || valFirmas === '') {
           return { color: '#64748b', weight: 1.2, fillColor: '#94a3b8', fillOpacity: 0.35 };
         }
 
         const recabadas = parseFloat(valFirmas) || 0;
-        const faltantes = parseFloat(valFaltantes) || 0;
-        const meta = recabadas + faltantes;
+        let color = '#ef4444'; // Rojo (0 a 4)
 
-        let color = '#ef4444'; // Rojo
-        if (faltantes === 0 || recabadas >= meta) {
-          color = '#22c55e'; // Verde
-        } else if (recabadas > 0) {
-          color = '#eab308'; // Amarillo
+        if (recabadas >= 10) {
+          color = '#22c55e'; // Verde (10+)
+        } else if (recabadas >= 5) {
+          color = '#eab308'; // Amarillo (5 a 9)
         }
 
         return { color: '#003366', weight: 1.5, fillColor: color, fillOpacity: 0.55 };
@@ -301,7 +291,6 @@
       onEachFeature: function(feature, layer) {
         const seccion = feature.properties.SECCION || 'N/A';
         const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
-        const valFaltantes = obtenerValorAtributo(feature.properties, ["FALTANTES"]);
 
         let recabadasText = 'N/A';
         let faltantesText = 'N/A';
@@ -311,26 +300,30 @@
 
         if (valFirmas !== null && valFirmas !== undefined && valFirmas !== '') {
           const recabadas = parseFloat(valFirmas) || 0;
-          const faltantes = parseFloat(valFaltantes) || 0;
-          const meta = recabadas + faltantes;
+          const faltantes = Math.max(0, META_POR_SECCION - recabadas);
 
-          totalMeta += meta;
+          totalMeta += META_POR_SECCION;
           totalRecabadas += recabadas;
           totalFaltantes += faltantes;
 
           recabadasText = recabadas;
           faltantesText = faltantes;
-          metaText = meta;
+          metaText = META_POR_SECCION;
 
-          if (faltantes === 0 || recabadas >= meta) {
+          const itemData = { seccion, meta: META_POR_SECCION, recabadas, faltantes };
+
+          if (recabadas >= 10) {
             badgeClass = 'bg-meta-ok';
-            estadoTexto = 'Completado';
-          } else if (recabadas > 0) {
+            estadoTexto = 'Completado (10+)';
+            window.seccionesVerdes.push(itemData);
+          } else if (recabadas >= 5) {
             badgeClass = 'bg-meta-proceso';
-            estadoTexto = 'En Proceso';
+            estadoTexto = 'En Proceso (5-9)';
+            window.seccionesAmarillas.push(itemData);
           } else {
             badgeClass = 'bg-meta-critico';
-            estadoTexto = 'Crítico';
+            estadoTexto = 'Crítico (0-4)';
+            window.seccionesRojas.push(itemData);
           }
         }
 
@@ -382,16 +375,55 @@
     });
   });
 
+  function generarTablaAgrupadaPDF(titulo, colorHeader, secciones) {
+    if (!secciones || secciones.length === 0) return '';
+    let filas = secciones.map(s => `
+      <tr class="border-b">
+        <td class="p-1.5 font-bold text-slate-800">${s.seccion}</td>
+        <td class="p-1.5 text-center">${s.meta}</td>
+        <td class="p-1.5 text-center font-semibold text-green-700">${s.recabadas}</td>
+        <td class="p-1.5 text-center font-semibold text-red-600">${s.faltantes}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="mb-4">
+        <div class="px-3 py-1.5 ${colorHeader} text-white font-bold text-xs rounded-t flex justify-between">
+          <span>${titulo}</span>
+          <span>Total: ${secciones.length} secciones</span>
+        </div>
+        <table class="w-full text-left text-xs border border-t-0 border-collapse">
+          <thead class="bg-slate-100 text-slate-700">
+            <tr>
+              <th class="p-1.5">Sección</th>
+              <th class="p-1.5 text-center">Meta</th>
+              <th class="p-1.5 text-center">Recabadas</th>
+              <th class="p-1.5 text-center">Faltantes</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
   function imprimirPantalla() {
     document.getElementById('pdf-distrito-sub').textContent = "Distrito " + document.getElementById('select-distrito').value;
     document.getElementById('pdf-fecha').textContent = new Date().toLocaleString('es-MX');
-    document.getElementById('pdf-tabla-body').innerHTML = document.getElementById('tabla-secciones-body').innerHTML;
-    
+
+    const contenedorAgrupado = document.getElementById('pdf-agrupado-container');
+    contenedorAgrupado.innerHTML = 
+      generarTablaAgrupadaPDF('🟢 SECCIONES VERDES (10 o más firmas)', 'bg-green-600', window.seccionesVerdes) +
+      generarTablaAgrupadaPDF('🟡 SECCIONES AMARILLAS (De 5 a 9 firmas)', 'bg-yellow-600', window.seccionesAmarillas) +
+      generarTablaAgrupadaPDF('🔴 SECCIONES ROJAS (De 0 a 4 firmas)', 'bg-red-600', window.seccionesRojas);
+
     document.getElementById('reporte-impresion').classList.remove('hidden');
+
     setTimeout(() => {
+      map.invalidateSize();
       window.print();
       document.getElementById('reporte-impresion').classList.add('hidden');
-    }, 200);
+    }, 400);
   }
 
   window.onload = cargarArchivosRaiz;
