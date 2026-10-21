@@ -23,17 +23,18 @@
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Etiquetas dinámicas adaptables con el zoom */
+  /* Etiquetas sutiles y no megarreferenciadas/protagonistas */
   .etiqueta-seccion {
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid #003366;
-    border-radius: 4px;
-    font-weight: 800;
-    font-size: 11px;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(0, 51, 102, 0.5);
+    border-radius: 3px;
+    font-weight: 700;
+    font-size: 10px;
     color: #003366;
-    padding: 1px 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    padding: 0px 3px;
+    box-shadow: none;
     white-space: nowrap;
+    pointer-events: none;
   }
 
   .badge-status { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; color: #fff; display: inline-block; }
@@ -42,25 +43,28 @@
   .bg-meta-critico { background-color: #ef4444; }
   .bg-meta-na { background-color: #94a3b8; color: #fff; }
 
+  /* Estilos especiales para Impresión / PDF */
   @media print {
-    @page { size: A4 landscape; margin: 8mm; }
-    body * { visibility: hidden; }
-    #reporte-impresion, #reporte-impresion * { visibility: visible; }
-    #reporte-impresion { position: absolute; left: 0; top: 0; width: 100%; }
+    body { background: white !important; font-size: 10pt; }
+    #header-bar, #sidebar, #btn-panel, #leyenda, .leaflet-control-container { display: none !important; }
+    #app { height: auto !important; overflow: visible !important; display: block !important; }
+    #mapa-wrap { height: 400px !important; page-break-after: always; position: relative !important; }
+    #map { height: 400px !important; position: relative !important; }
+    #reporte-impresion { display: block !important; page-break-before: always; }
   }
 </style>
 </head>
 <body class="flex flex-col">
 
 <!-- HEADER SUPERIOR -->
-<header class="bg-[#003366] text-white h-[70px] px-6 flex items-center justify-between shadow-md border-b-2 border-blue-400 flex-none">
+<header id="header-bar" class="bg-[#003366] text-white h-[70px] px-6 flex items-center justify-between shadow-md border-b-2 border-blue-400 flex-none">
   <div>
     <h1 class="text-lg font-bold tracking-wide">Control de Firmas Electorales</h1>
     <p class="text-xs text-blue-200">Monitoreo de Avance y Metas por Sección Electoral</p>
   </div>
   <div class="flex items-center gap-3">
-    <button onclick="imprimirMapaHorizontal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow">
-      🖨️ Imprimir Mapa Horizontal
+    <button onclick="imprimirPantalla()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow">
+      🖨️ Imprimir / Guardar PDF
     </button>
   </div>
 </header>
@@ -82,13 +86,25 @@
       </div>
     </div>
 
-    <!-- FILTROS DE DISTRITO LOCAL -->
+    <!-- FILTROS DE DISTRITO -->
     <div>
       <label class="block text-xs font-bold text-slate-700 mb-1">Distrito Local</label>
       <select id="select-distrito" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="actualizarVista()">
         <option value="TODOS">Todos los Distritos</option>
         <option value="15">Distrito Local 15</option>
         <option value="11">Distrito Local 11</option>
+      </select>
+    </div>
+
+    <!-- FILTRO POR SEMÁFORO (VERDE, AMARILLO, ROJO, GRIS) -->
+    <div>
+      <label class="block text-xs font-bold text-slate-700 mb-1">Filtrar por Estatus</label>
+      <select id="select-estatus" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="actualizarVista()">
+        <option value="TODOS">Ver Todos los Estatus</option>
+        <option value="VERDE">🟢 Solo Verdes (Completados)</option>
+        <option value="AMARILLO">🟡 Solo Amarillos (En Proceso)</option>
+        <option value="ROJO">🔴 Solo Rojos (Críticos / Sin avance)</option>
+        <option value="GRIS">⚪ Solo Grises (Sin Dato / N/A)</option>
       </select>
     </div>
 
@@ -127,18 +143,18 @@
   </div>
 </div>
 
-<!-- CONTENEDOR OCULTO PARA IMPRESIÓN Y PDF HORIZONTAL -->
-<div id="reporte-impresion" class="hidden p-6 bg-white">
+<!-- VISTA DE REPORTE IMPRESO / PDF (AL FINAL DE LA PÁGINA) -->
+<div id="reporte-impresion" class="p-6 bg-white hidden">
   <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
     <div>
-      <h1 class="text-2xl font-bold text-blue-900">Mapa General de Avance de Firmas</h1>
+      <h1 class="text-2xl font-bold text-blue-900">Reporte de Avance de Firmas Electorales</h1>
       <p id="pdf-distrito-sub" class="text-sm font-bold text-slate-600">Distrito Local</p>
     </div>
     <div class="text-right text-xs text-slate-500">
-      <p>Generado el: <span id="pdf-fecha"></span></p>
+      <p>Fecha: <span id="pdf-fecha"></span></p>
     </div>
   </div>
-  <table class="w-full text-left text-xs border">
+  <table class="w-full text-left text-xs border border-collapse">
     <thead class="bg-blue-900 text-white">
       <tr>
         <th class="p-2">Sección</th>
@@ -172,6 +188,20 @@
     setTimeout(() => map.invalidateSize(), 300);
   }
 
+  // Función para obtener los valores ignorando espacios extras en los nombres de las columnas
+  function obtenerValorAtributo(props, nombresPosibles) {
+    if (!props) return null;
+    for (let p in props) {
+      let claveNormalizada = p.replace(/\s+/g, '').toUpperCase();
+      for (let np of nombresPosibles) {
+        if (claveNormalizada === np.replace(/\s+/g, '').toUpperCase()) {
+          return props[p];
+        }
+      }
+    }
+    return null;
+  }
+
   async function cargarArchivosRaiz() {
     try {
       const resSec = await fetch('Secciones_firmas.geojson');
@@ -194,7 +224,9 @@
     capaSecciones.clearLayers();
 
     const distritoSeleccionado = document.getElementById('select-distrito').value;
+    const estatusSeleccionado = document.getElementById('select-estatus').value;
 
+    // DIBUJAR LÍMITES DE DISTRITOS
     if ((distritoSeleccionado === '11' || distritoSeleccionado === 'TODOS') && datosDistrito11GeoJSON) {
       L.geoJSON(datosDistrito11GeoJSON, {
         style: { color: '#002244', weight: 3.5, fillOpacity: 0.03, dashArray: '6, 6' }
@@ -218,15 +250,37 @@
 
     const layerGroup = L.geoJSON(datosSeccionesGeoJSON, {
       filter: function(feature) {
-        if (distritoSeleccionado === 'TODOS') return true;
-        const distL = String(feature.properties.DISTRITO_L || '').trim();
-        return distL === distritoSeleccionado;
+        // Filtro por Distrito
+        if (distritoSeleccionado !== 'TODOS') {
+          const distL = String(feature.properties.DISTRITO_L || '').trim();
+          if (distL !== distritoSeleccionado) return false;
+        }
+
+        // Filtro por Estatus
+        const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+        const valFaltantes = obtenerValorAtributo(feature.properties, ["FALTANTES"]);
+
+        let tipoEstatus = 'GRIS';
+        if (valFirmas !== null && valFirmas !== undefined && valFirmas !== '') {
+          const recabadas = parseFloat(valFirmas) || 0;
+          const faltantes = parseFloat(valFaltantes) || 0;
+          const meta = recabadas + faltantes;
+
+          if (faltantes === 0 || recabadas >= meta) tipoEstatus = 'VERDE';
+          else if (recabadas > 0) tipoEstatus = 'AMARILLO';
+          else tipoEstatus = 'ROJO';
+        }
+
+        if (estatusSeleccionado !== 'TODOS' && estatusSeleccionado !== tipoEstatus) {
+          return false;
+        }
+
+        return true;
       },
       style: function(feature) {
-        const valFirmas = feature.properties["TOTAL DE FIRMAS"];
-        const valFaltantes = feature.properties["FALTANTES"];
+        const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+        const valFaltantes = obtenerValorAtributo(feature.properties, ["FALTANTES"]);
 
-        // Si no tiene datos (es NULL o vacío) -> Color Gris (N/A)
         if (valFirmas === null || valFirmas === undefined || valFirmas === '') {
           return { color: '#64748b', weight: 1.2, fillColor: '#94a3b8', fillOpacity: 0.35 };
         }
@@ -235,19 +289,19 @@
         const faltantes = parseFloat(valFaltantes) || 0;
         const meta = recabadas + faltantes;
 
-        let color = '#ef4444'; // Rojo (Crítico / 0 firmas)
+        let color = '#ef4444'; // Rojo
         if (faltantes === 0 || recabadas >= meta) {
-          color = '#22c55e'; // Verde (Completada)
+          color = '#22c55e'; // Verde
         } else if (recabadas > 0) {
-          color = '#eab308'; // Amarillo (En Proceso)
+          color = '#eab308'; // Amarillo
         }
 
         return { color: '#003366', weight: 1.5, fillColor: color, fillOpacity: 0.55 };
       },
       onEachFeature: function(feature, layer) {
         const seccion = feature.properties.SECCION || 'N/A';
-        const valFirmas = feature.properties["TOTAL DE FIRMAS"];
-        const valFaltantes = feature.properties["FALTANTES"];
+        const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+        const valFaltantes = obtenerValorAtributo(feature.properties, ["FALTANTES"]);
 
         let recabadasText = 'N/A';
         let faltantesText = 'N/A';
@@ -328,11 +382,16 @@
     });
   });
 
-  function imprimirMapaHorizontal() {
+  function imprimirPantalla() {
     document.getElementById('pdf-distrito-sub').textContent = "Distrito " + document.getElementById('select-distrito').value;
     document.getElementById('pdf-fecha').textContent = new Date().toLocaleString('es-MX');
     document.getElementById('pdf-tabla-body').innerHTML = document.getElementById('tabla-secciones-body').innerHTML;
-    window.print();
+    
+    document.getElementById('reporte-impresion').classList.remove('hidden');
+    setTimeout(() => {
+      window.print();
+      document.getElementById('reporte-impresion').classList.add('hidden');
+    }, 200);
   }
 
   window.onload = cargarArchivosRaiz;
