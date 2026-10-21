@@ -3,50 +3,58 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Control de Firmas Electorales</title>
+<title>Visor de Firmas Electorales</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-  :root { --azul:#003366; --fondo:#f8fafc; --borde:#e2e8f0; }
-  html, body { height:100%; margin:0; padding:0; font-family:system-ui,-apple-system,sans-serif; background:var(--fondo); }
+  :root { --azul:#003366; --azul-suave:#e6edf5; --fondo:#f1f5f9; --borde:#dbe3ec; }
+  html, body { height:100%; margin:0; padding:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--fondo); color:#1e293b; }
 
-  #app { display:flex; height:calc(100vh - 70px); position:relative; overflow:hidden; }
-  #sidebar { width:380px; flex:none; background:#fff; border-right:1px solid var(--borde); overflow-y:auto; transition:margin-left .25s ease; z-index:500; display:flex; flex-direction:column; }
-  #sidebar.colapsado { margin-left:-380px; }
+  #app { display:flex; height:calc(100vh - 64px); position:relative; overflow:hidden; }
+  #sidebar { width:340px; flex:none; box-sizing:border-box; padding:16px; display:flex; flex-direction:column; gap:20px; background:#fff; border-right:1px solid var(--borde); overflow-y:auto; transition:margin-left .25s ease; z-index:500; }
+  #sidebar.colapsado { margin-left:-340px; }
+  #sidebar h2 { margin:0 0 8px; font-size:13px; font-weight:700; color:var(--azul); }
 
-  #mapa-wrap { flex:1; position:relative; min-width:0; }
+  .segmentos { display:flex; gap:4px; padding:4px; background:var(--azul-suave); border-radius:10px; }
+  .btn-dist { flex:1; border:0; background:transparent; padding:8px 4px; border-radius:7px; font-family:inherit; font-size:12px; font-weight:600; color:var(--azul); cursor:pointer; }
+  .btn-dist.activo { background:var(--azul); color:#fff; }
+  .capa { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; cursor:pointer; }
+  .capa input { accent-color:var(--azul); width:15px; height:15px; margin:0; }
+  #btn-imprimir { width:100%; padding:9px 12px; border:0; border-radius:8px; background:var(--azul); color:#fff; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+  #btn-imprimir:hover { background:#002855; }
+
+  #mapa-wrap { flex:1; position:relative; min-width:0; z-index:0; }
   #map { position:absolute; inset:0; width:100%; height:100%; }
 
-  .flotante { position:absolute; z-index:600; background:rgba(255,255,255,.95); border:1px solid var(--borde); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); backdrop-filter:blur(4px); }
-  #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
+  .flotante { position:absolute; z-index:600; background:rgba(255,255,255,.96); border:1px solid var(--borde); border-radius:10px; box-shadow:0 2px 10px rgba(15,23,42,.12); backdrop-filter:blur(4px); }
+  #btn-panel { top:12px; left:12px; padding:7px 14px; font-family:inherit; font-size:13px; font-weight:700; color:var(--azul); cursor:pointer; }
+  #coords { top:56px; left:12px; padding:4px 10px; font-size:11px; color:#475569; font-variant-numeric:tabular-nums; }
+  #barra-stats { bottom:12px; left:12px; display:flex; align-items:center; gap:20px; padding:10px 16px; }
+  .stat { text-align:center; }
+  .stat b { display:block; font-size:18px; color:var(--azul); }
+  .stat span { font-size:11px; color:#64748b; }
+  .barra-avance { width:120px; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Etiquetas de sección mejoradas */
   .etiqueta-wrap { pointer-events:none; }
-  .etiqueta-seccion {
-    position:absolute; left:0; top:0; transform:translate(-50%,-50%);
-    border:1px solid rgba(255,255,255,0.8); border-radius:3px;
-    font-weight:700; line-height:1.2; padding:1px 4px; white-space:nowrap;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  }
-
+  .etiqueta-seccion { position:absolute; left:0; top:0; transform:translate(-50%,-50%); border:1px solid rgba(255,255,255,0.8); border-radius:3px; font-weight:700; line-height:1.2; padding:1px 4px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
   .badge-status { padding:2px 6px; border-radius:4px; font-weight:700; font-size:10px; color:#fff; display:inline-block; }
   .bg-meta-ok { background-color:#22c55e; }
   .bg-meta-proceso { background-color:#eab308; color:#000; }
   .bg-meta-critico { background-color:#ef4444; }
   .bg-meta-na { background-color:#94a3b8; color:#fff; }
 
-  /* Elementos exclusivos para impresión */
   #titulo-mapa { display:none; }
   #resumen-mapa { display:none; }
   #detalle-impresion { display:none; }
 
-  /* Modo impresión: El mapa ocupa exactamente toda el área ensanchada (1095px x 765px) */
   body.modo-impresion #header-bar,
   body.modo-impresion #sidebar,
   body.modo-impresion #btn-panel,
+  body.modo-impresion #coords,
+  body.modo-impresion #barra-stats,
   body.modo-impresion #leyenda,
   body.modo-impresion .leaflet-control-zoom { display:none !important; }
   body.modo-impresion #app { display:block !important; height:auto !important; overflow:visible !important; }
@@ -60,65 +68,74 @@
     #reporte-impresion { break-before:page; page-break-before:always; }
     #pdf-agrupado-container > div, tr { break-inside:avoid; }
   }
+
+  @media (max-width:720px) {
+    #sidebar { position:absolute; top:0; bottom:0; left:0; width:86%; max-width:340px; box-shadow:4px 0 16px rgba(0,0,0,.2); }
+    #sidebar.colapsado { margin-left:-100%; }
+    #barra-stats { gap:12px; padding:8px 10px; }
+    .stat b { font-size:15px; }
+    .barra-avance { width:70px; }
+    #leyenda { display:none; }
+  }
 </style>
 </head>
 <body class="flex flex-col">
 
-<!-- HEADER SUPERIOR -->
-<header id="header-bar" class="bg-[#003366] text-white h-[70px] px-6 flex items-center justify-between shadow-md border-b-2 border-blue-400 flex-none">
-  <div>
-    <h1 class="text-lg font-bold tracking-wide">Control de Firmas Electorales</h1>
-    <p class="text-xs text-blue-200">Monitoreo de Avance (Verde: 10+ | Amarillo: 5 a 9 | Rojo: 0 a 4)</p>
+<!-- ENCABEZADO -->
+<header id="header-bar" class="flex-none h-[64px] px-5 flex items-center gap-4 text-white shadow-md" style="background:var(--azul);">
+  <div class="flex items-center gap-2">
+    <img src="img/logo_partido.png" alt="Logo Partido" class="h-9 w-auto" onerror="this.remove()">
+    <img src="img/logo%20%C3%81ngel%20Luna.jpg" alt="Logo Ángel Luna" class="h-9 w-auto rounded" onerror="this.remove()">
   </div>
-  <div class="flex items-center gap-3">
-    <button id="btn-imprimir" onclick="imprimirPantalla()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow">
-      🖨️ Imprimir / Guardar PDF Horizontal
-    </button>
+  <div class="border-l border-white/20 pl-4">
+    <h1 class="text-base font-bold leading-tight">Visor de Firmas Electorales</h1>
+    <p class="text-xs text-blue-200">Monitoreo de avance por sección · Meta de 10 firmas</p>
   </div>
 </header>
 
 <div id="app">
   <!-- PANEL LATERAL -->
-  <aside id="sidebar" class="p-4 space-y-4">
-
-    <!-- RESUMEN GENERAL -->
-    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
-      <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Resumen General de Firmas</h2>
-      <div class="grid grid-cols-3 gap-2 text-center">
-        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Meta Total</span><b id="kpi-meta" class="text-base text-blue-900">0</b></div>
-        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Recabadas</span><b id="kpi-recabadas" class="text-base text-green-600">0</b></div>
-        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Faltantes</span><b id="kpi-faltantes" class="text-base text-red-600">0</b></div>
+  <aside id="sidebar">
+    <section>
+      <h2>Distrito</h2>
+      <div class="segmentos">
+        <button class="btn-dist activo" data-dist="TODOS" onclick="setDistrito('TODOS')">Ambos</button>
+        <button class="btn-dist" data-dist="11" onclick="setDistrito('11')">Distrito 11</button>
+        <button class="btn-dist" data-dist="15" onclick="setDistrito('15')">Distrito 15</button>
       </div>
-      <div class="w-full bg-slate-200 rounded-full h-2.5 mt-3 overflow-hidden">
-        <div id="kpi-barra" class="bg-green-500 h-2.5 rounded-full" style="width: 0%"></div>
-      </div>
-    </div>
-
-    <!-- FILTROS DE DISTRITO -->
-    <div>
-      <label class="block text-xs font-bold text-slate-700 mb-1">Distrito Local</label>
-      <select id="select-distrito" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="actualizarVista()">
+      <select id="select-distrito" class="hidden" onchange="actualizarVista()">
         <option value="TODOS">Todos los Distritos</option>
         <option value="15">Distrito Local 15</option>
         <option value="11">Distrito Local 11</option>
       </select>
-    </div>
+    </section>
 
-    <!-- FILTRO POR SEMÁFORO -->
-    <div>
-      <label class="block text-xs font-bold text-slate-700 mb-1">Filtrar por Estatus</label>
-      <select id="select-estatus" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="actualizarVista()">
-        <option value="TODOS">Ver Todos los Estatus</option>
-        <option value="VERDE">🟢 Solo Verdes (10 o más)</option>
-        <option value="AMARILLO">🟡 Solo Amarillos (5 a 9)</option>
-        <option value="ROJO">🔴 Solo Rojos (0 a 4)</option>
-        <option value="GRIS">⚪ Solo Grises (Sin Dato / N/A)</option>
+    <section>
+      <h2>Estatus</h2>
+      <select id="select-estatus" class="w-full p-2 border rounded-lg bg-white text-sm" onchange="actualizarVista()">
+        <option value="TODOS">Ver todos los estatus</option>
+        <option value="VERDE">🟢 Solo verdes (10 o más)</option>
+        <option value="AMARILLO">🟡 Solo amarillos (5 a 9)</option>
+        <option value="ROJO">🔴 Solo rojos (0 a 4)</option>
+        <option value="GRIS">⚪ Solo grises (sin dato)</option>
       </select>
-    </div>
+    </section>
 
-    <!-- TABLA DE DESGLOSE -->
-    <div class="flex-1 overflow-y-auto">
-      <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Avance por Sección</h3>
+    <section>
+      <h2>Capas en el mapa</h2>
+      <label class="capa"><input type="checkbox" checked onchange="toggleCapa('contorno', this.checked)"> Contorno de distritos</label>
+      <label class="capa"><input type="checkbox" checked onchange="toggleCapa('secciones', this.checked)"> Secciones con color</label>
+      <label class="capa"><input type="checkbox" checked onchange="toggleCapa('etiquetas', this.checked)"> Número de sección</label>
+    </section>
+
+    <section>
+      <h2>Descargas</h2>
+      <button id="btn-imprimir" onclick="imprimirPantalla()">🖨️ Imprimir / Guardar PDF horizontal</button>
+      <p class="text-xs text-slate-500 mt-2">En el diálogo elige «Guardar como PDF» y desmarca «Encabezados y pies de página».</p>
+    </section>
+
+    <section class="flex-1">
+      <h2>Avance por sección</h2>
       <table class="w-full text-left text-xs border-collapse">
         <thead>
           <tr class="bg-slate-100 text-slate-700 border-b">
@@ -131,13 +148,24 @@
         </thead>
         <tbody id="tabla-secciones-body"></tbody>
       </table>
-    </div>
+    </section>
   </aside>
 
-  <!-- VISTA DEL MAPA ÚNICO -->
+  <!-- MAPA -->
   <div id="mapa-wrap">
     <div id="map"></div>
     <button id="btn-panel" class="flotante" onclick="toggleSidebar()">☰ Panel</button>
+    <div id="coords" class="flotante">LAT — · LON —</div>
+
+    <div id="barra-stats" class="flotante">
+      <div class="stat"><b id="kpi-meta">0</b><span>Meta total</span></div>
+      <div class="stat"><b id="kpi-recabadas" class="text-green-600">0</b><span>Recabadas</span></div>
+      <div class="stat"><b id="kpi-faltantes" class="text-red-600">0</b><span>Faltantes</span></div>
+      <div class="barra-avance">
+        <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden"><div id="kpi-barra" class="bg-green-500 h-2 rounded-full" style="width:0%"></div></div>
+        <span class="block text-center text-[11px] text-slate-500 mt-1">Avance general</span>
+      </div>
+    </div>
 
     <!-- Resumen flotante sobre el mapa al imprimir -->
     <div id="resumen-mapa">
@@ -170,6 +198,7 @@
     </div>
   </div>
 </div>
+
 
 <div id="detalle-impresion"></div>
 
@@ -915,6 +944,28 @@
   window.addEventListener('beforeprint', prepararImpresion);
   window.addEventListener('afterprint', terminarImpresion);
   window.onload = cargarArchivosRaiz;
+
+  // ---- Controles del visor ----
+  map.zoomControl.setPosition('topright');
+
+  function setDistrito(valor) {
+    document.getElementById('select-distrito').value = valor;
+    document.querySelectorAll('.btn-dist').forEach(b => b.classList.toggle('activo', b.dataset.dist === valor));
+    actualizarVista();
+  }
+
+  const capasOpcionales = { contorno: capaContornoDistrito, secciones: capaSecciones, etiquetas: capaEtiquetas };
+  function toggleCapa(nombre, visible) {
+    if (visible) map.addLayer(capasOpcionales[nombre]);
+    else map.removeLayer(capasOpcionales[nombre]);
+  }
+
+  map.on('mousemove', e => {
+    document.getElementById('coords').textContent =
+      `LAT ${e.latlng.lat.toFixed(5)} · LON ${e.latlng.lng.toFixed(5)}`;
+  });
+
+  if (window.innerWidth <= 720) document.getElementById('sidebar').classList.add('colapsado');
 </script>
 </body>
 </html>
