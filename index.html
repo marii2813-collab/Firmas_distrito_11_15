@@ -178,6 +178,19 @@
     </div>
   </div>
 
+  <!-- Resumen general: mismo diseño que el panel, para el PDF -->
+  <div class="mb-5 max-w-xl p-3 bg-slate-50 rounded-lg border border-slate-200">
+    <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Resumen General de Firmas</h2>
+    <div class="grid grid-cols-3 gap-2 text-center">
+      <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Meta Total</span><b id="pdf-kpi-meta" class="text-lg text-blue-900">0</b></div>
+      <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Recabadas</span><b id="pdf-kpi-recabadas" class="text-lg text-green-600">0</b></div>
+      <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Faltantes</span><b id="pdf-kpi-faltantes" class="text-lg text-red-600">0</b></div>
+    </div>
+    <div class="w-full bg-slate-200 rounded-full h-2.5 mt-3 overflow-hidden">
+      <div id="pdf-kpi-barra" class="bg-green-500 h-2.5 rounded-full" style="width: 0%"></div>
+    </div>
+  </div>
+
   <div id="pdf-agrupado-container" class="space-y-6">
     <!-- Se llena dinámicamente con tablas separadas por color -->
   </div>
@@ -630,6 +643,12 @@
     document.getElementById('titulo-mapa-fecha').textContent = fecha;
     document.getElementById('pdf-distrito-sub').textContent = textoDistrito;
     document.getElementById('pdf-fecha').textContent = fecha;
+
+    // Resumen: se copian los valores que se ven en el panel (ya filtrados por distrito y estatus)
+    ['meta', 'recabadas', 'faltantes'].forEach(k => {
+      document.getElementById('pdf-kpi-' + k).textContent = document.getElementById('kpi-' + k).textContent;
+    });
+    document.getElementById('pdf-kpi-barra').style.width = document.getElementById('kpi-barra').style.width;
 
     document.getElementById('pdf-agrupado-container').innerHTML =
       generarTablaAgrupadaPDF('🟢 SECCIONES VERDES (10 o más firmas)', 'bg-green-600', window.seccionesVerdes) +
