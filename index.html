@@ -23,13 +23,13 @@
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Número de sección: su tamaño lo calcula ajustarEtiquetas() según el polígono.
-     El marcador está en el centro visual del polígono y el span se centra sobre él. */
+  /* Número de sección: caja de color, como las etiquetas de ruta del reporte.
+     El color de fondo lo pone el script según el semáforo de la sección. */
   .etiqueta-wrap { pointer-events:none; }
   .etiqueta-seccion {
     position:absolute; left:0; top:0; transform:translate(-50%,-50%);
-    background:rgba(255,255,255,.85); border:1px solid rgba(0,51,102,.5); border-radius:3px;
-    font-weight:700; line-height:1.2; color:#003366; padding:0 2px; white-space:nowrap;
+    background:#003366; color:#fff; border:1px solid #fff; border-radius:3px;
+    font-weight:700; line-height:1.2; padding:0 3px; white-space:nowrap;
   }
 
   .badge-status { padding:2px 6px; border-radius:4px; font-weight:700; font-size:10px; color:#fff; display:inline-block; }
@@ -198,10 +198,19 @@
   // Relleno translúcido: con poca opacidad las calles se ven por debajo de cada sección
   const RELLENO = { pantalla: 0.55, impresion: 0.3 };
   // Tamaño de los números (px). Todos usan el mismo tamaño: el mayor que cabe dentro de al menos
-  // "cobertura" de las secciones. Los que no caben a ese tamaño van junto a su sección con línea guía.
+  // "cobertura" de las secciones. Los que no caben a ese tamaño se acomodan lo más cerca posible de su sección.
   const ETIQUETA = { max: 8, min: 5, cobertura: 0.85 };
+  // Caja de cada número: relleno horizontal y borde (px)
+  const CAJA = { padX: 3, borde: 1 };
   // Velo sobre lo que queda fuera del distrito (solo al imprimir): 0 = sin velo, 1 = blanco total
   const VELO_FUERA = 0.6;
+  // Colores de cada caja según el semáforo de la sección (como las etiquetas de ruta del reporte)
+  const ESTILO_ETIQUETA = {
+    'bg-meta-ok':      { fondo: '#16a34a', texto: '#fff' },
+    'bg-meta-proceso': { fondo: '#eab308', texto: '#000' },
+    'bg-meta-critico': { fondo: '#dc2626', texto: '#fff' },
+    'bg-meta-na':      { fondo: '#64748b', texto: '#fff' }
+  };
 
   // SVG (no canvas): las líneas salen nítidas al guardar en PDF
   let map = L.map('map', { zoomSnap: 0.25 }).setView([19.395, -99.095], 13);
@@ -216,7 +225,6 @@
 
   const capaContornoDistrito = L.layerGroup().addTo(map);
   const capaSecciones = L.layerGroup().addTo(map);
-  const capaLineas = L.layerGroup().addTo(map);     // líneas guía y puntos de los números que van fuera
   const capaEtiquetas = L.layerGroup().addTo(map);
 
   let datosSeccionesGeoJSON = null;
@@ -224,7 +232,7 @@
   let datosDistrito15GeoJSON = null;
 
   let opacidadRelleno = RELLENO.pantalla;
-  let etiquetas = [];              // { marker, polo, pole0, ringRel0, anchoPorPx, linea, punto }
+  let etiquetas = [];              // { marker, pole0, ringRel0, anchoPorPx }
   let vistaAntesDeImprimir = null;
   let impresionPreparada = false;
   let velo = null;
@@ -399,6 +407,14 @@
     return medidorTexto.measureText(texto).width / 100;
   }
 
+  // Medias dimensiones de la caja de un número de tamaño fs (relleno, borde y un margen de 1.5 px)
+  function medidasCaja(fs, anchoPorPx) {
+    return {
+      hw: (anchoPorPx * fs + 2 * CAJA.padX + 2 * CAJA.borde) / 2 + 1.5,
+      hh: (fs * 1.2 + 2 * CAJA.borde) / 2 + 1.5
+    };
+  }
+
   // ¿Se cruzan los segmentos p1-p2 y p3-p4?
   function orientacion(p, q, r) {
     return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
@@ -427,11 +443,10 @@
 
   // Mayor tamaño de letra (entre ETIQUETA.min y max) que deja el número dentro del polígono; null si no cabe
   function mayorTamanoQueCabe(contorno, anchoPorPx) {
-    const cabe = fs => cabeRectangulo(
-      contorno,
-      (anchoPorPx * fs + 6) / 2 + 1.5,  // texto + relleno y borde del span + margen
-      (fs * 1.2 + 2) / 2 + 1.5          // alto de línea + borde + margen
-    );
+    const cabe = fs => {
+      const { hw, hh } = medidasCaja(fs, anchoPorPx);
+      return cabeRectangulo(contorno, hw, hh);
+    };
     if (cabe(ETIQUETA.max)) return ETIQUETA.max;
     if (!cabe(ETIQUETA.min)) return null;
 
@@ -455,13 +470,19 @@
 
   // Rectángulo (px de mundo al zoom actual) que ocupa un número centrado en c
   function rectanguloEtiqueta(c, fs, anchoPorPx) {
-    const hw = (anchoPorPx * fs + 6) / 2 + 1.5;
-    const hh = (fs * 1.2 + 2) / 2 + 1.5;
+    const { hw, hh } = medidasCaja(fs, anchoPorPx);
     return { x1: c[0] - hw, y1: c[1] - hh, x2: c[0] + hw, y2: c[1] + hh };
   }
 
   function seSolapan(a, b) {
     return a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+  }
+
+  // Área en común de dos rectángulos (0 si no se tocan)
+  function areaSolape(a, b) {
+    const w = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);
+    const h = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
+    return w > 0 && h > 0 ? w * h : 0;
   }
 
   // Zonas ocupadas por los elementos flotantes visibles (panel, leyenda, tarjeta de impresión)
@@ -482,27 +503,32 @@
     return rects;
   }
 
-  // Busca el punto más cercano al polígono donde el número quepa dentro de la vista
-  // sin encimarse con otro número ni con un elemento flotante
-  function colocarFuera(centroPx, radio, fs, anchoPorPx, ocupadas, vista) {
+  // Busca el lugar más cercano al centro de la sección donde el número no se encime con otro
+  // ni con un elemento flotante. Si no hay ninguno libre, usa el que menos se encima.
+  function colocarCercaDeLaSeccion(centroPx, radio, fs, anchoPorPx, ocupadas, obstaculos, vista) {
+    const { hw, hh } = medidasCaja(fs, anchoPorPx);
     const m = 4;
-    const enVista = r => r.x1 >= vista.min.x + m && r.y1 >= vista.min.y + m &&
-                         r.x2 <= vista.max.x - m && r.y2 <= vista.max.y - m;
-    const buscar = conObstaculos => {
-      for (let paso = 0; paso < 60; paso++) {
-        const d = radio + 4 + paso * 4;
-        for (let k = 0; k < 24; k++) {
-          const a = (k / 24) * 2 * Math.PI + paso * 0.37;
-          const c = [centroPx[0] + d * Math.cos(a), centroPx[1] + d * Math.sin(a)];
-          const r = rectanguloEtiqueta(c, fs, anchoPorPx);
-          if (!enVista(r)) continue;
-          if (conObstaculos && ocupadas.some(o => seSolapan(o, r))) continue;
-          return c;
-        }
+    const dMax = Math.min(radio + 30, 150);
+    let mejor = null;
+
+    for (let d = 0; d <= dMax; d += 3) {
+      const puntos = d === 0 ? 1 : 16;
+      for (let k = 0; k < puntos; k++) {
+        const a = (k / 16) * 2 * Math.PI;
+        const c = d === 0 ? centroPx : [centroPx[0] + d * Math.cos(a), centroPx[1] + d * Math.sin(a)];
+        const r = { x1: c[0] - hw, y1: c[1] - hh, x2: c[0] + hw, y2: c[1] + hh };
+
+        if (r.x1 < vista.min.x + m || r.y1 < vista.min.y + m ||
+            r.x2 > vista.max.x - m || r.y2 > vista.max.y - m) continue;
+        if (obstaculos.some(o => seSolapan(o, r))) continue;
+
+        let coste = 0;
+        for (const o of ocupadas) coste += areaSolape(o, r);
+        if (coste === 0) return c;
+        if (!mejor || coste < mejor.coste) mejor = { c, coste };
       }
-      return null;
-    };
-    return buscar(true) || buscar(false) || centroPx;
+    }
+    return mejor ? mejor.c : centroPx;
   }
 
   // Pone el número en la posición c (px de mundo) con el tamaño fs
@@ -514,60 +540,38 @@
     span.style.fontSize = fs.toFixed(2) + 'px';
   }
 
-  // Línea guía desde el centro del polígono hasta su número (solo para los que van fuera)
-  function ponerGuia(e, c, z) {
-    const destino = map.unproject(L.point(c[0], c[1]), z);
-    if (e.linea) {
-      e.linea.setLatLngs([e.polo, destino]);
-    } else {
-      e.linea = L.polyline([e.polo, destino], {
-        color: '#003366', weight: 1, opacity: 0.8, interactive: false
-      }).addTo(capaLineas);
-    }
-    if (!e.punto) {
-      e.punto = L.circleMarker(e.polo, {
-        radius: 2, color: '#003366', fillColor: '#003366', fillOpacity: 1, weight: 0, interactive: false
-      }).addTo(capaLineas);
-    }
-  }
-
-  function quitarGuia(e) {
-    if (e.linea) { capaLineas.removeLayer(e.linea); e.linea = null; }
-    if (e.punto) { capaLineas.removeLayer(e.punto); e.punto = null; }
-  }
-
   // Recalcula tamaño y posición de los números para el zoom actual:
-  // 1) un solo tamaño para todos; 2) los que caben a ese tamaño se quedan en el centro de su sección;
-  // 3) los que no caben se colocan junto a su sección, con línea guía, sin encimarse con otros.
+  // 1) un solo tamaño para todos;
+  // 2) los que caben a ese tamaño se quedan en el centro de su sección;
+  // 3) los demás se acomodan lo más cerca posible de su sección, sin encimarse con otros números.
   function ajustarEtiquetas() {
     if (!etiquetas.length) return;
     const z = map.getZoom();
     const escala = Math.pow(2, z);
-    const ocupadas = obstaculosVisibles(z);
+    const obstaculos = obstaculosVisibles(z);
     const vista = map.getPixelBounds();
 
-    const medidas = etiquetas.map(e => {
-      const contorno = e.ringRel0.map(([x, y]) => [x * escala, y * escala]);
-      return mayorTamanoQueCabe(contorno, e.anchoPorPx);
-    });
+    const medidas = etiquetas.map(e =>
+      mayorTamanoQueCabe(e.ringRel0.map(([x, y]) => [x * escala, y * escala]), e.anchoPorPx)
+    );
     const tamano = tamanoUniforme(medidas);
 
-    const fuera = [];
+    const ocupadas = [];
+    const sinCabida = [];
+
     etiquetas.forEach((e, i) => {
-      if (medidas[i] === null || medidas[i] < tamano) { fuera.push(e); return; }
+      if (medidas[i] === null || medidas[i] < tamano) { sinCabida.push(e); return; }
       const c = [e.pole0[0] * escala, e.pole0[1] * escala];
       ponerEtiqueta(e, c, tamano, z);
       ocupadas.push(rectanguloEtiqueta(c, tamano, e.anchoPorPx));
-      quitarGuia(e);
     });
 
-    fuera.forEach(e => {
+    sinCabida.forEach(e => {
       const centroPx = [e.pole0[0] * escala, e.pole0[1] * escala];
       const radio = Math.max(...e.ringRel0.map(([x, y]) => Math.hypot(x, y))) * escala;
-      const c = colocarFuera(centroPx, radio, tamano, e.anchoPorPx, ocupadas, vista);
+      const c = colocarCercaDeLaSeccion(centroPx, radio, tamano, e.anchoPorPx, ocupadas, obstaculos, vista);
       ponerEtiqueta(e, c, tamano, z);
       ocupadas.push(rectanguloEtiqueta(c, tamano, e.anchoPorPx));
-      ponerGuia(e, c, z);
     });
   }
 
@@ -668,7 +672,7 @@
     map.setView(centro, zMax, { animate: false });
   }
 
-  // Contornos del distrito: encuadre, velo y datos para el reporte
+  // Prepara el mapa (tamaño de hoja, encuadre, velo, relleno ligero, tarjeta) y el reporte
   function prepararImpresion() {
     if (impresionPreparada) return;
     impresionPreparada = true;
@@ -779,7 +783,6 @@
     capaContornoDistrito.clearLayers();
     capaSecciones.clearLayers();
     capaEtiquetas.clearLayers();
-    capaLineas.clearLayers();
     etiquetas = [];
 
     const distritoSeleccionado = document.getElementById('select-distrito').value;
@@ -911,10 +914,11 @@
             const pole0 = poloDeInaccesibilidad(ring0);
             const polo = map.unproject(L.point(pole0[0], pole0[1]), 0);
 
+            const estilo = ESTILO_ETIQUETA[badgeClass] || ESTILO_ETIQUETA['bg-meta-na'];
             const marker = L.marker(polo, {
               icon: L.divIcon({
                 className: 'etiqueta-wrap',
-                html: `<span class="etiqueta-seccion">${seccion}</span>`,
+                html: `<span class="etiqueta-seccion" style="background:${estilo.fondo};color:${estilo.texto}">${seccion}</span>`,
                 iconSize: [0, 0]
               }),
               interactive: false,
@@ -923,12 +927,9 @@
             capaEtiquetas.addLayer(marker);
             etiquetas.push({
               marker,
-              polo,
               pole0,
               ringRel0: ring0.map(([x, y]) => [x - pole0[0], y - pole0[1]]),
-              anchoPorPx: anchoPorPixel(String(seccion)),
-              linea: null,
-              punto: null
+              anchoPorPx: anchoPorPixel(String(seccion))
             });
           }
         }
