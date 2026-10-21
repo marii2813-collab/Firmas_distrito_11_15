@@ -7,6 +7,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- html2pdf.js para exportación directa y exacta a PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <style>
   :root { --azul:#003366; --fondo:#f8fafc; --borde:#e2e8f0; }
@@ -23,13 +25,13 @@
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Etiquetas sutiles adaptables */
+  /* Etiquetas discretas que se ajustan al tamaño de cada polígono */
   .etiqueta-seccion {
     background: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(0, 51, 102, 0.5);
+    border: 1px solid rgba(0, 51, 102, 0.4);
     border-radius: 3px;
     font-weight: 700;
-    font-size: 10px;
+    font-size: 9px;
     color: #003366;
     padding: 0px 3px;
     box-shadow: none;
@@ -43,14 +45,14 @@
   .bg-meta-critico { background-color: #ef4444; }
   .bg-meta-na { background-color: #94a3b8; color: #fff; }
 
-  /* Estilos para impresión en formato horizontal (Landscape) */
+  /* Estilos para impresión nativa y generación de PDF */
   @media print {
-    @page { size: A4 landscape; margin: 10mm; }
-    body { background: white !important; font-size: 10pt; }
+    @page { size: A4 landscape; margin: 8mm; }
+    body { background: white !important; }
     #header-bar, #sidebar, #btn-panel, #leyenda, .leaflet-control-container { display: none !important; }
     #app { height: auto !important; overflow: visible !important; display: block !important; }
-    #mapa-wrap { height: 450px !important; width: 100% !important; position: relative !important; page-break-after: always; }
-    #map { height: 450px !important; width: 100% !important; position: relative !important; }
+    #mapa-wrap { height: 420px !important; width: 100% !important; position: relative !important; page-break-after: always; }
+    #map { height: 420px !important; width: 100% !important; position: relative !important; }
     #reporte-impresion { display: block !important; }
   }
 </style>
@@ -61,11 +63,14 @@
 <header id="header-bar" class="bg-[#003366] text-white h-[70px] px-6 flex items-center justify-between shadow-md border-b-2 border-blue-400 flex-none">
   <div>
     <h1 class="text-lg font-bold tracking-wide">Control de Firmas Electorales</h1>
-    <p class="text-xs text-blue-200">Monitoreo de Avance (Verde: 10+ | Amarillo: 5 a 9 | Rojo: 0 a 4)</p>
+    <p class="text-xs text-blue-200">Monitoreo de Avance (Verde: 10+ | Amarillo: 5-9 | Rojo: 0-4)</p>
   </div>
-  <div class="flex items-center gap-3">
-    <button onclick="imprimirPantalla()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow">
-      🖨️ Imprimir / Guardar PDF Horizontal
+  <div class="flex items-center gap-2">
+    <button id="btn-pdf" onclick="generarPDFDirecto()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow transition">
+      📄 Guardar en PDF
+    </button>
+    <button onclick="imprimirPantalla()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow transition">
+      🖨️ Imprimir Mapa
     </button>
   </div>
 </header>
@@ -142,7 +147,7 @@
   </div>
 </div>
 
-<!-- CONTENEDOR OCULTO PARA IMPRESIÓN Y PDF HORIZONTAL (AGRUPADO) -->
+<!-- CONTENEDOR CONTENIDO PARA IMPRESIÓN / PDF HORIZONTAL AGRUPADO -->
 <div id="reporte-impresion" class="p-6 bg-white hidden">
   <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
     <div>
@@ -155,9 +160,7 @@
     </div>
   </div>
 
-  <div id="pdf-agrupado-container" class="space-y-6">
-    <!-- Se llena dinámicamente con tablas separadas por color -->
-  </div>
+  <div id="pdf-agrupado-container" class="space-y-6"></div>
 </div>
 
 <script>
@@ -166,7 +169,8 @@
   
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
-    maxZoom: 19
+    maxZoom: 19,
+    crossOrigin: true
   }).addTo(map);
 
   let capaContornoDistrito = L.layerGroup().addTo(map);
@@ -407,7 +411,7 @@
     `;
   }
 
-  function imprimirPantalla() {
+  function prepararContenidoPDF() {
     document.getElementById('pdf-distrito-sub').textContent = "Distrito " + document.getElementById('select-distrito').value;
     document.getElementById('pdf-fecha').textContent = new Date().toLocaleString('es-MX');
 
@@ -418,12 +422,49 @@
       generarTablaAgrupadaPDF('🔴 SECCIONES ROJAS (De 0 a 4 firmas)', 'bg-red-600', window.seccionesRojas);
 
     document.getElementById('reporte-impresion').classList.remove('hidden');
+  }
 
+  // Generación directa de PDF descargable
+  async function generarPDFDirecto() {
+    const btn = document.getElementById('btn-pdf');
+    btn.disabled = true;
+    btn.textContent = '⌛ Generando PDF...';
+
+    prepararContenidoPDF();
+    map.invalidateSize();
+
+    // Elemento que contendrá todo el reporte (Mapa + Tablas)
+    const elemento = document.createElement('div');
+    elemento.style.padding = '10px';
+    elemento.appendChild(document.getElementById('mapa-wrap').cloneNode(true));
+    elemento.appendChild(document.getElementById('reporte-impresion').cloneNode(true));
+
+    const opt = {
+      margin: 8,
+      filename: `Reporte_Firmas_${document.getElementById('select-distrito').value}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+
+    try {
+      await html2pdf().set(opt).from(elemento).save();
+    } catch (e) {
+      console.error("Error al exportar PDF:", e);
+    } finally {
+      document.getElementById('reporte-impresion').classList.add('hidden');
+      btn.disabled = false;
+      btn.textContent = '📄 Guardar en PDF';
+    }
+  }
+
+  function imprimirPantalla() {
+    prepararContenidoPDF();
     setTimeout(() => {
       map.invalidateSize();
       window.print();
       document.getElementById('reporte-impresion').classList.add('hidden');
-    }, 400);
+    }, 300);
   }
 
   window.onload = cargarArchivosRaiz;
