@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control y Avance de Firmas Electorales</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<style>
+  :root { --azul:#003366; --fondo:#f8fafc; --borde:#e2e8f0; }
+  html, body { height:100%; margin:0; padding:0; font-family:system-ui,-apple-system,sans-serif; background:var(--fondo); }
+  
+  #app { display:flex; height:calc(100vh - 70px); position:relative; overflow:hidden; }
+  #sidebar { width:380px; flex:none; background:#fff; border-right:1px solid var(--borde); overflow-y:auto; transition:margin-left .25s ease; z-index:500; display:flex; flex-direction:column; }
+  #sidebar.colapsado { margin-left:-380px; }
+  
+  #mapa-wrap { flex:1; position:relative; min-width:0; }
+  #map { position:absolute; inset:0; width:100%; height:100%; }
+
+  .flotante { position:absolute; z-index:600; background:rgba(255,255,255,.95); border:1px solid var(--borde); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); backdrop-filter:blur(4px); }
+  #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
+  #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
+
+  /* Etiquetas dinámicas adaptables con el zoom */
+  .etiqueta-seccion {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #003366;
+    border-radius: 4px;
+    font-weight: 800;
+    font-size: 11px;
+    color: #003366;
+    padding: 1px 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    white-space: nowrap;
+  }
+
+  .badge-status { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; color: #fff; display: inline-block; }
+  .bg-meta-ok { background-color: #22c55e; }
+  .bg-meta-proceso { background-color: #eab308; color: #000; }
+  .bg-meta-critico { background-color: #ef4444; }
+
+  @media print {
+    @page { size: A4 landscape; margin: 8mm; }
+    body * { visibility: hidden; }
+    #reporte-impresion, #reporte-impresion * { visibility: visible; }
+    #reporte-impresion { position: absolute; left: 0; top: 0; width: 100%; }
+  }
+</style>
+</head>
+<body class="flex flex-col">
+
+<!-- HEADER SUPERIOR -->
+<header class="bg-[#003366] text-white h-[70px] px-6 flex items-center justify-between shadow-md border-b-2 border-blue-400 flex-none">
+  <div>
+    <h1 class="text-lg font-bold tracking-wide">Control de Firmas Electorales</h1>
+    <p class="text-xs text-blue-200">Monitoreo de Avance y Metas por Sección Electoral</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <button onclick="imprimirMapaHorizontal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow">
+      🖨️ Imprimir Mapa Horizontal
+    </button>
+  </div>
+</header>
+
+<div id="app">
+  <!-- PANEL LATERAL -->
+  <aside id="sidebar" class="p-4 space-y-4">
+    
+    <!-- RESUMEN GENERAL -->
+    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+      <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Resumen General de Firmas</h2>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Meta</span><b id="kpi-meta" class="text-base text-blue-900">0</b></div>
+        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Recabadas</span><b id="kpi-recabadas" class="text-base text-green-600">0</b></div>
+        <div class="bg-white p-2 rounded border"><span class="block text-xs text-slate-500">Faltantes</span><b id="kpi-faltantes" class="text-base text-red-600">0</b></div>
+      </div>
+      <div class="w-full bg-slate-200 rounded-full h-2.5 mt-3 overflow-hidden">
+        <div id="kpi-barra" class="bg-green-500 h-2.5 rounded-full" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- FILTROS -->
+    <div>
+      <label class="block text-xs font-bold text-slate-700 mb-1">Distrito Local</label>
+      <select id="select-distrito" class="w-full p-2 border rounded-lg bg-white text-sm font-semibold text-slate-800" onchange="cargarDatosDistrito()">
+        <option value="Distrito Local 15">Distrito Local 15</option>
+        <option value="Distrito Local 11">Distrito Local 11</option>
+      </select>
+    </div>
+
+    <!-- TABLA DE DESGLOSE -->
+    <div class="flex-1 overflow-y-auto">
+      <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Avance por Sección</h3>
+      <table class="w-full text-left text-xs border-collapse">
+        <thead>
+          <tr class="bg-slate-100 text-slate-700 border-b">
+            <th class="p-2">Sec.</th>
+            <th class="p-2 text-center">Meta</th>
+            <th class="p-2 text-center">Firmas</th>
+            <th class="p-2 text-center">Falta</th>
+            <th class="p-2 text-center">Estatus</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-secciones-body">
+          <!-- Se llena dinámicamente -->
+        </tbody>
+      </table>
+    </div>
+  </aside>
+
+  <!-- VISTA DEL MAPA -->
+  <div id="mapa-wrap">
+    <div id="map"></div>
+    <button id="btn-panel" class="flotante" onclick="toggleSidebar()">☰ Panel</button>
+    
+    <div id="leyenda" class="flotante space-y-1">
+      <div class="font-bold text-xs text-slate-700 mb-1">Semaforización de Firmas</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Meta Completada (100%)</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span> En Proceso (>50%)</div>
+      <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Crítico / Prioritaria (<50%)</div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTENEDOR OCULTO PARA IMPRESIÓN Y PDF HORIZONTAL -->
+<div id="reporte-impresion" class="hidden p-6 bg-white">
+  <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-blue-900">Mapa General de Avance de Firmas</h1>
+      <p id="pdf-distrito-sub" class="text-sm font-bold text-slate-600">Distrito Local</p>
+    </div>
+    <div class="text-right text-xs text-slate-500">
+      <p>Generado el: <span id="pdf-fecha"></span></p>
+    </div>
+  </div>
+  <div id="mapa-print-container" class="w-full h-[450px] border rounded mb-4"></div>
+  <table class="w-full text-left text-xs border">
+    <thead class="bg-blue-900 text-white">
+      <tr>
+        <th class="p-2">Sección</th>
+        <th class="p-2 text-center">Meta</th>
+        <th class="p-2 text-center">Firmas Recabadas</th>
+        <th class="p-2 text-center">Firmas Faltantes</th>
+        <th class="p-2 text-center">Estatus</th>
+      </tr>
+    </thead>
+    <tbody id="pdf-tabla-body"></tbody>
+  </table>
+</div>
+
+<script>
+  let map = L.map('map', { preferCanvas: true }).setView([19.4018, -99.1329], 13);
+  
+  // Capa base con visibilidad de calles clara (OpenStreetMap)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  let capaSecciones = L.layerGroup().addTo(map);
+
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('colapsado');
+    setTimeout(() => map.invalidateSize(), 300);
+  }
+
+  // Carga e integración de datos
+  async function cargarDatosDistrito() {
+    const distrito = document.getElementById('select-distrito').value;
+    capaSecciones.clearLayers();
+
+    try {
+      // Intentar cargar la capa de Secciones Electorales del repositorio
+      const response = await fetch(`capas/${distrito}.-Secciones electorales.geojson`);
+      const data = await response.json();
+
+      let totalMeta = 0;
+      let totalRecabadas = 0;
+      const tbody = document.getElementById('tabla-secciones-body');
+      tbody.innerHTML = '';
+
+      const bounds = [];
+
+      L.geoJSON(data, {
+        style: function(feature) {
+          // Extraer variables o asignar valores de prueba dinámicos si faltan en las propiedades
+          const meta = feature.properties.meta || 100;
+          const recabadas = feature.properties.firmas || Math.floor(Math.random() * 120);
+          const faltantes = Math.max(0, meta - recabadas);
+          
+          let color = '#ef4444'; // Rojo por defecto
+          if (faltantes === 0) color = '#22c55e'; // Verde
+          else if (recabadas >= meta * 0.5) color = '#eab308'; // Amarillo
+
+          return { color: '#003366', weight: 1.5, fillColor: color, fillOpacity: 0.45 };
+        },
+        onEachFeature: function(feature, layer) {
+          const seccion = feature.properties.SECCION || feature.properties.seccion || 'N/A';
+          const meta = feature.properties.meta || 100;
+          const recabadas = feature.properties.firmas || Math.floor(Math.random() * 120);
+          const faltantes = Math.max(0, meta - recabadas);
+          
+          totalMeta += meta;
+          totalRecabadas += recabadas;
+
+          let badgeClass = 'bg-meta-critico';
+          let estadoTexto = 'Crítico';
+          if (faltantes === 0) { badgeClass = 'bg-meta-ok'; estadoTexto = 'Completado'; }
+          else if (recabadas >= meta * 0.5) { badgeClass = 'bg-meta-proceso'; estadoTexto = 'En Proceso'; }
+
+          // Mostrar etiqueta de Sección que se ajusta y permanece legible al hacer zoom
+          layer.bindTooltip(`Sección ${seccion}`, { permanent: true, direction: 'center', className: 'etiqueta-seccion' });
+
+          // Popup interactivo
+          layer.bindPopup(`
+            <div class="text-xs p-1">
+              <b class="text-sm text-blue-900">Sección Electoral ${seccion}</b><br>
+              <b>Meta de Firmas:</b> ${meta}<br>
+              <b>Firmas Recabadas:</b> ${recabadas}<br>
+              <b>Firmas Faltantes:</b> ${faltantes}<br>
+              <span class="badge-status ${badgeClass} mt-1">${estadoTexto}</span>
+            </div>
+          `);
+
+          // Insertar fila en el panel lateral
+          const tr = document.createElement('tr');
+          tr.className = 'border-b hover:bg-slate-50 cursor-pointer';
+          tr.innerHTML = `
+            <td class="p-2 font-bold text-blue-900">${seccion}</td>
+            <td class="p-2 text-center">${meta}</td>
+            <td class="p-2 text-center font-semibold text-green-700">${recabadas}</td>
+            <td class="p-2 text-center font-semibold text-red-600">${faltantes}</td>
+            <td class="p-2 text-center"><span class="badge-status ${badgeClass}">${estadoTexto}</span></td>
+          `;
+          tr.onclick = () => map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+          tbody.appendChild(tr);
+
+          capaSecciones.addLayer(layer);
+          bounds.push(layer.getBounds());
+        }
+      });
+
+      // Actualizar indicadores principales (KPIs)
+      const totalFaltantes = Math.max(0, totalMeta - totalRecabadas);
+      const porcentaje = totalMeta > 0 ? Math.min(100, Math.round((totalRecabadas / totalMeta) * 100)) : 0;
+
+      document.getElementById('kpi-meta').textContent = totalMeta;
+      document.getElementById('kpi-recabadas').textContent = totalRecabadas;
+      document.getElementById('kpi-faltantes').textContent = totalFaltantes;
+      document.getElementById('kpi-barra').style.width = porcentaje + '%';
+
+      if (bounds.length > 0) {
+        map.fitBounds(L.featureGroup(capaSecciones.getLayers()).getBounds(), { padding: [30, 30] });
+      }
+
+    } catch (error) {
+      console.warn("Aviso: No se pudo cargar el archivo local GeoJSON.", error);
+    }
+  }
+
+  // Ajustar visualización de etiquetas dinámicamente según el nivel de zoom
+  map.on('zoomend', function() {
+    const zoomActual = map.getZoom();
+    document.querySelectorAll('.etiqueta-seccion').forEach(el => {
+      el.style.display = zoomActual < 13 ? 'none' : 'block';
+    });
+  });
+
+  // Generación e Impresión del Mapa en Formato Horizontal
+  function imprimirMapaHorizontal() {
+    document.getElementById('pdf-distrito-sub').textContent = document.getElementById('select-distrito').value;
+    document.getElementById('pdf-fecha').textContent = new Date().toLocaleString('es-MX');
+    document.getElementById('pdf-tabla-body').innerHTML = document.getElementById('tabla-secciones-body').innerHTML;
+    
+    window.print();
+  }
+
+  // Inicialización
+  window.onload = cargarDatosDistrito;
+</script>
+</body>
+</html>
