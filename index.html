@@ -23,7 +23,7 @@
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Etiquetas de sección mejoradas: caja sólida con color de semáforo y texto contrastado */
+  /* Etiquetas de sección mejoradas */
   .etiqueta-wrap { pointer-events:none; }
   .etiqueta-seccion {
     position:absolute; left:0; top:0; transform:translate(-50%,-50%);
@@ -43,17 +43,18 @@
   #resumen-mapa { display:none; }
   #detalle-impresion { display:none; }
 
+  /* Modo impresión: El mapa ocupa exactamente toda el área ensanchada (1095px x 765px) */
   body.modo-impresion #header-bar,
   body.modo-impresion #sidebar,
   body.modo-impresion #btn-panel,
   body.modo-impresion #leyenda,
   body.modo-impresion .leaflet-control-zoom { display:none !important; }
   body.modo-impresion #app { display:block !important; height:auto !important; overflow:visible !important; }
-  body.modo-impresion #mapa-wrap { flex:none; width:1080px; height:746px; }
+  body.modo-impresion #mapa-wrap { flex:none; width:1095px; height:765px; }
   body.modo-impresion #resumen-mapa { display:block; position:absolute; top:8px; left:8px; z-index:1000; width:340px; padding:8px 10px; background:rgba(248,250,252,.95); border:1px solid var(--borde); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
 
   @media print {
-    @page { size:A4 landscape; margin:5mm; }
+    @page { size:A4 landscape; margin:3mm; }
     * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     body { background:#fff !important; }
     #reporte-impresion { break-before:page; page-break-before:always; }
@@ -193,7 +194,6 @@
   const URL_TELAS = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const ATRIBUCION = '© OpenStreetMap contributors';
 
-  // Opacidad optimizada (0.40) para que el mapa base y las calles se noten claramente
   const RELLENO = { pantalla: 0.40, impresion: 0.30 };
   const BORDE = { pantalla: 1.5, impresion: 2.0 };
   const ETIQUETA = { max: 9, min: 5, cobertura: 0.85 };
@@ -638,7 +638,7 @@
     const tw = tarjeta.offsetWidth, th = tarjeta.offsetHeight;
     const W = map.getSize().x, H = map.getSize().y;
     const centro = limites.getCenter();
-    const zMax = map.getBoundsZoom(limites, false, L.point(16, 16));
+    const zMax = map.getBoundsZoom(limites, false, L.point(40, 40)); // Padding ajustado para cubrir las esquinas exteriores
 
     for (let z = zMax, i = 0; i < 8; z -= 0.25, i++) {
       map.setView(centro, z, { animate: false });
@@ -901,7 +901,7 @@
     document.getElementById('kpi-barra').style.width = porcentaje + '%';
 
     if (layerGroup.getLayers().length > 0) {
-      map.fitBounds(layerGroup.getBounds(), { padding: [25, 25] });
+      map.fitBounds(layerGroup.getBounds(), { padding: [40, 40] }); // Padding optimizado para abarcar toda el área
     }
     ajustarEtiquetas();
   }
