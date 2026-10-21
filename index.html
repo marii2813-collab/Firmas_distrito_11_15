@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- html2pdf.js para exportación directa y exacta a PDF -->
+<!-- Librería html2pdf.js para exportar con precisión exacta -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <style>
@@ -18,25 +18,26 @@
   #sidebar { width:380px; flex:none; background:#fff; border-right:1px solid var(--borde); overflow-y:auto; transition:margin-left .25s ease; z-index:500; display:flex; flex-direction:column; }
   #sidebar.colapsado { margin-left:-380px; }
   
-  #mapa-wrap { flex:1; position:relative; min-width:0; }
+  #mapa-wrap { flex:1; position:relative; min-width:0; background: #e5e7eb; }
   #map { position:absolute; inset:0; width:100%; height:100%; }
 
   .flotante { position:absolute; z-index:600; background:rgba(255,255,255,.95); border:1px solid var(--borde); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); backdrop-filter:blur(4px); }
   #btn-panel { top:12px; left:12px; padding:6px 12px; font-size:12px; font-weight:700; color:var(--azul); cursor:pointer; }
   #leyenda { bottom:12px; right:12px; padding:10px 14px; font-size:11px; }
 
-  /* Etiquetas discretas que se ajustan al tamaño de cada polígono */
+  /* Etiquetas de sección adaptables al polígono */
   .etiqueta-seccion {
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.82);
     border: 1px solid rgba(0, 51, 102, 0.4);
     border-radius: 3px;
     font-weight: 700;
     font-size: 9px;
     color: #003366;
-    padding: 0px 3px;
+    padding: 1px 3px;
     box-shadow: none;
     white-space: nowrap;
     pointer-events: none;
+    text-align: center;
   }
 
   .badge-status { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; color: #fff; display: inline-block; }
@@ -45,14 +46,14 @@
   .bg-meta-critico { background-color: #ef4444; }
   .bg-meta-na { background-color: #94a3b8; color: #fff; }
 
-  /* Estilos para impresión nativa y generación de PDF */
+  /* Estilos específicos para impresión horizontal nativa */
   @media print {
-    @page { size: A4 landscape; margin: 8mm; }
+    @page { size: A4 landscape; margin: 5mm; }
     body { background: white !important; }
     #header-bar, #sidebar, #btn-panel, #leyenda, .leaflet-control-container { display: none !important; }
     #app { height: auto !important; overflow: visible !important; display: block !important; }
-    #mapa-wrap { height: 420px !important; width: 100% !important; position: relative !important; page-break-after: always; }
-    #map { height: 420px !important; width: 100% !important; position: relative !important; }
+    #mapa-wrap { height: 480px !important; width: 100% !important; position: relative !important; page-break-after: always; }
+    #map { height: 480px !important; width: 100% !important; position: relative !important; }
     #reporte-impresion { display: block !important; }
   }
 </style>
@@ -66,11 +67,11 @@
     <p class="text-xs text-blue-200">Monitoreo de Avance (Verde: 10+ | Amarillo: 5-9 | Rojo: 0-4)</p>
   </div>
   <div class="flex items-center gap-2">
-    <button id="btn-pdf" onclick="generarPDFDirecto()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow transition">
-      📄 Guardar en PDF
+    <button id="btn-pdf" onclick="generarPDFPreciso()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow transition">
+      📄 Guardar PDF Horizontal
     </button>
     <button onclick="imprimirPantalla()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1.5 shadow transition">
-      🖨️ Imprimir Mapa
+      🖨️ Imprimir
     </button>
   </div>
 </header>
@@ -147,7 +148,7 @@
   </div>
 </div>
 
-<!-- CONTENEDOR CONTENIDO PARA IMPRESIÓN / PDF HORIZONTAL AGRUPADO -->
+<!-- CONTENEDOR OCULTO PARA REPORTE PDF AGRUPADO -->
 <div id="reporte-impresion" class="p-6 bg-white hidden">
   <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
     <div>
@@ -159,7 +160,6 @@
       <p>Meta por sección: <b>10 firmas</b></p>
     </div>
   </div>
-
   <div id="pdf-agrupado-container" class="space-y-6"></div>
 </div>
 
@@ -167,6 +167,7 @@
   const META_POR_SECCION = 10;
   let map = L.map('map', { preferCanvas: true }).setView([19.395, -99.095], 13);
   
+  // Capa base de alta nitidez para calles
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
     maxZoom: 19,
@@ -179,10 +180,14 @@
   let datosSeccionesGeoJSON = null;
   let datosDistrito11GeoJSON = null;
   let datosDistrito15GeoJSON = null;
+  let ultimoBounds = null;
 
   function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('colapsado');
-    setTimeout(() => map.invalidateSize(), 300);
+    setTimeout(() => {
+      map.invalidateSize();
+      if (ultimoBounds) map.fitBounds(ultimoBounds, { padding: [30, 30] });
+    }, 300);
   }
 
   function obtenerValorAtributo(props, nombresPosibles) {
@@ -218,7 +223,7 @@
   function calcularEstatus(recabadas) {
     if (recabadas >= 10) return 'VERDE';
     if (recabadas >= 5) return 'AMARILLO';
-    return 'ROJO'; // 0 a 4
+    return 'ROJO';
   }
 
   function actualizarVista() {
@@ -282,13 +287,10 @@
         }
 
         const recabadas = parseFloat(valFirmas) || 0;
-        let color = '#ef4444'; // Rojo (0 a 4)
+        let color = '#ef4444';
 
-        if (recabadas >= 10) {
-          color = '#22c55e'; // Verde (10+)
-        } else if (recabadas >= 5) {
-          color = '#eab308'; // Amarillo (5 a 9)
-        }
+        if (recabadas >= 10) color = '#22c55e';
+        else if (recabadas >= 5) color = '#eab308';
 
         return { color: '#003366', weight: 1.5, fillColor: color, fillOpacity: 0.55 };
       },
@@ -331,6 +333,7 @@
           }
         }
 
+        // Etiqueta centrada en el polígono
         layer.bindTooltip(`${seccion}`, { permanent: true, direction: 'center', className: 'etiqueta-seccion' });
 
         layer.bindPopup(`
@@ -368,14 +371,15 @@
     document.getElementById('kpi-barra').style.width = porcentaje + '%';
 
     if (layerGroup.getLayers().length > 0) {
-      map.fitBounds(layerGroup.getBounds(), { padding: [25, 25] });
+      ultimoBounds = layerGroup.getBounds();
+      map.fitBounds(ultimoBounds, { padding: [30, 30] });
     }
   }
 
   map.on('zoomend', function() {
     const currentZoom = map.getZoom();
     document.querySelectorAll('.etiqueta-seccion').forEach(el => {
-      el.style.display = currentZoom < 13 ? 'none' : 'block';
+      el.style.display = currentZoom < 12 ? 'none' : 'block';
     });
   });
 
@@ -424,26 +428,31 @@
     document.getElementById('reporte-impresion').classList.remove('hidden');
   }
 
-  // Generación directa de PDF descargable
-  async function generarPDFDirecto() {
+  // Generación perfecta de PDF horizontal centrado y completo
+  async function generarPDFPreciso() {
     const btn = document.getElementById('btn-pdf');
     btn.disabled = true;
     btn.textContent = '⌛ Generando PDF...';
 
     prepararContenidoPDF();
+    
+    // Forzar redibujado completo del mapa y re-centrado exacto
     map.invalidateSize();
+    if (ultimoBounds) map.fitBounds(ultimoBounds, { padding: [30, 30] });
 
-    // Elemento que contendrá todo el reporte (Mapa + Tablas)
+    await new Promise(r => setTimeout(r, 600)); // Esperar carga de teselas de calles
+
     const elemento = document.createElement('div');
-    elemento.style.padding = '10px';
+    elemento.style.padding = '5px';
+    elemento.style.background = '#ffffff';
     elemento.appendChild(document.getElementById('mapa-wrap').cloneNode(true));
     elemento.appendChild(document.getElementById('reporte-impresion').cloneNode(true));
 
     const opt = {
-      margin: 8,
+      margin: 6,
       filename: `Reporte_Firmas_${document.getElementById('select-distrito').value}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
     };
 
@@ -454,17 +463,19 @@
     } finally {
       document.getElementById('reporte-impresion').classList.add('hidden');
       btn.disabled = false;
-      btn.textContent = '📄 Guardar en PDF';
+      btn.textContent = '📄 Guardar PDF Horizontal';
     }
   }
 
   function imprimirPantalla() {
     prepararContenidoPDF();
+    map.invalidateSize();
+    if (ultimoBounds) map.fitBounds(ultimoBounds, { padding: [30, 30] });
+
     setTimeout(() => {
-      map.invalidateSize();
       window.print();
       document.getElementById('reporte-impresion').classList.add('hidden');
-    }, 300);
+    }, 400);
   }
 
   window.onload = cargarArchivosRaiz;
