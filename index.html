@@ -41,6 +41,12 @@
   /* Tarjeta de título y resumen sobre el mapa: solo aparece al imprimir */
   #resumen-mapa { display:none; }
 
+  /* Hojas de detalle con zoom: solo aparecen al imprimir */
+  #detalle-impresion { display:none; }
+  .pagina-detalle { width:1080px; height:746px; break-before:page; page-break-before:always; }
+  .titulo-detalle { margin:0 0 4px; font-size:12px; font-weight:700; color:#003366; border-bottom:2px solid #003366; padding-bottom:3px; }
+  .mapa-detalle { width:1080px; height:720px; }
+
   /* Modo impresión (lo activan el botón o Ctrl+P).
      Hoja A4 horizontal con márgenes de 5 mm: 287 x 200 mm (~1085 x 756 px).
      El mapa usa 1080 x 746 px y cubre casi toda la hoja. */
@@ -52,13 +58,14 @@
   body.modo-impresion #app { display:block !important; height:auto !important; overflow:visible !important; }
   body.modo-impresion #mapa-wrap { flex:none; width:1080px; height:746px; }
   body.modo-impresion #resumen-mapa { display:block; position:absolute; top:8px; left:8px; z-index:1000; width:340px; padding:8px 10px; background:rgba(248,250,252,.95); border:1px solid var(--borde); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+  body.modo-impresion #detalle-impresion { display:block; }
 
   @media print {
     @page { size:A4 landscape; margin:5mm; }
     /* Conserva fondos y colores aunque el navegador tenga "Gráficos de fondo" desmarcado */
     * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     body { background:#fff !important; }
-    /* El reporte de tablas empieza en la hoja 2 */
+    /* El reporte de tablas empieza en la hoja nueva */
     #reporte-impresion { break-before:page; page-break-before:always; }
     #pdf-agrupado-container > div, tr { break-inside:avoid; }
   }
@@ -174,7 +181,10 @@
   </div>
 </div>
 
-<!-- REPORTE PARA IMPRESIÓN (aparece en la hoja 2) -->
+<!-- HOJAS DE DETALLE CON ZOOM (se llenan al imprimir) -->
+<div id="detalle-impresion"></div>
+
+<!-- REPORTE PARA IMPRESIÓN (después de los mapas) -->
 <div id="reporte-impresion" class="p-6 bg-white hidden">
   <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
     <div>
@@ -194,17 +204,22 @@
 
 <script>
   const META_POR_SECCION = 10;
+  const URL_TELAS = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const ATRIBUCION = '© OpenStreetMap contributors';
 
-  // Relleno translúcido: con poca opacidad las calles se ven por debajo de cada sección
+  // Relleno y grosor del límite de cada sección: en pantalla y en impresión
   const RELLENO = { pantalla: 0.55, impresion: 0.3 };
-  // Tamaño de los números (px). Todos usan el mismo tamaño: el mayor que cabe dentro de al menos
-  // "cobertura" de las secciones. Los que no caben a ese tamaño se acomodan lo más cerca posible de su sección.
-  const ETIQUETA = { max: 8, min: 5, cobertura: 0.85 };
+  const BORDE = { pantalla: 1.5, impresion: 2.4 };
+  // Tamaño de los números (px). Dentro de cada hoja todos usan el mismo tamaño: el mayor que cabe
+  // dentro de al menos "cobertura" de las secciones. Los que no caben se acomodan lo más cerca posible.
+  const ETIQUETA = { max: 8, maxDetalle: 12, min: 5, cobertura: 0.85 };
   // Caja de cada número: relleno horizontal y borde (px)
   const CAJA = { padX: 3, borde: 1 };
   // Velo sobre lo que queda fuera del distrito (solo al imprimir): 0 = sin velo, 1 = blanco total
   const VELO_FUERA = 0.6;
-  // Colores de cada caja según el semáforo de la sección (como las etiquetas de ruta del reporte)
+  // true: además de la hoja general, imprime dos hojas con zoom (mitades del distrito) para leer mejor
+  const IMPRESION_DETALLE = true;
+  // Colores de cada caja según el semáforo de la sección
   const ESTILO_ETIQUETA = {
     'bg-meta-ok':      { fondo: '#16a34a', texto: '#fff' },
     'bg-meta-proceso': { fondo: '#eab308', texto: '#000' },
@@ -218,11 +233,7 @@
   map.createPane('velo');
   map.getPane('velo').style.zIndex = 350;
 
-  const capaBase = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19
-  }).addTo(map);
-
+  const capaBase = L.tileLayer(URL_TELAS, { attribution: ATRIBUCION, maxZoom: 19 }).addTo(map);
   const capaContornoDistrito = L.layerGroup().addTo(map);
   const capaSecciones = L.layerGroup().addTo(map);
   const capaEtiquetas = L.layerGroup().addTo(map);
@@ -231,11 +242,15 @@
   let datosDistrito11GeoJSON = null;
   let datosDistrito15GeoJSON = null;
 
+  let seleccionSecciones = [];     // secciones visibles según distrito y estatus
   let opacidadRelleno = RELLENO.pantalla;
-  let etiquetas = [];              // { marker, pole0, ringRel0, anchoPorPx }
+  let grosorBorde = BORDE.pantalla;
+  let etiquetas = [];              // { texto, html, polo, pole0, ringRel0, anchoPorPx, marker }
   let vistaAntesDeImprimir = null;
   let impresionPreparada = false;
   let velo = null;
+  let detalleMapas = [];
+  let cargasPendientes = [];
 
   map.on('zoomend moveend', ajustarEtiquetas);
 
@@ -278,6 +293,40 @@
     if (recabadas >= 10) return 'VERDE';
     if (recabadas >= 5) return 'AMARILLO';
     return 'ROJO'; // 0 a 4
+  }
+
+  // ¿La sección entra en el distrito y en el estatus elegidos?
+  function pasaFiltros(feature, distrito, estatus) {
+    if (distrito !== 'TODOS') {
+      const distL = String(feature.properties.DISTRITO_L || '').trim();
+      if (distL !== distrito) return false;
+    }
+    const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+    let tipoEstatus = 'GRIS';
+    if (valFirmas !== null && valFirmas !== undefined && valFirmas !== '') {
+      tipoEstatus = calcularEstatus(parseFloat(valFirmas) || 0);
+    }
+    return estatus === 'TODOS' || estatus === tipoEstatus;
+  }
+
+  // Estilo de una sección: color por semáforo, con relleno y límite de la opacidad y grosor dados
+  function estiloSeccion(feature, opacidad, grosor) {
+    const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+    if (valFirmas === null || valFirmas === undefined || valFirmas === '') {
+      return { color: '#334155', weight: grosor, fillColor: '#94a3b8', fillOpacity: opacidad };
+    }
+    const recabadas = parseFloat(valFirmas) || 0;
+    let color = '#ef4444';                       // Rojo (0 a 4)
+    if (recabadas >= 10) color = '#22c55e';      // Verde (10+)
+    else if (recabadas >= 5) color = '#eab308';  // Amarillo (5 a 9)
+    return { color: '#00203f', weight: grosor, fillColor: color, fillOpacity: opacidad };
+  }
+
+  // Cambia el relleno y el grosor del límite de todas las secciones del mapa principal
+  function aplicarEstiloSecciones(opacidad, grosor) {
+    opacidadRelleno = opacidad;
+    grosorBorde = grosor;
+    capaSecciones.eachLayer(grupo => grupo.eachLayer(p => p.setStyle({ fillOpacity: opacidad, weight: grosor })));
   }
 
   /* ---------- Geometría ---------- */
@@ -441,16 +490,16 @@
     return true;
   }
 
-  // Mayor tamaño de letra (entre ETIQUETA.min y max) que deja el número dentro del polígono; null si no cabe
-  function mayorTamanoQueCabe(contorno, anchoPorPx) {
+  // Mayor tamaño de letra (entre ETIQUETA.min y maxFs) que deja el número dentro del polígono; null si no cabe
+  function mayorTamanoQueCabe(contorno, anchoPorPx, maxFs) {
     const cabe = fs => {
       const { hw, hh } = medidasCaja(fs, anchoPorPx);
       return cabeRectangulo(contorno, hw, hh);
     };
-    if (cabe(ETIQUETA.max)) return ETIQUETA.max;
+    if (cabe(maxFs)) return maxFs;
     if (!cabe(ETIQUETA.min)) return null;
 
-    let bajo = ETIQUETA.min, alto = ETIQUETA.max; // bajo cabe, alto no
+    let bajo = ETIQUETA.min, alto = maxFs; // bajo cabe, alto no
     for (let i = 0; i < 8; i++) {
       const medio = (bajo + alto) / 2;
       if (cabe(medio)) bajo = medio; else alto = medio;
@@ -458,10 +507,10 @@
     return bajo;
   }
 
-  // Un solo tamaño para todos los números: el mayor que cabe dentro de al menos ETIQUETA.cobertura de las secciones
-  function tamanoUniforme(medidas) {
+  // Un solo tamaño para todos los números de la hoja: el mayor que cabe dentro de al menos ETIQUETA.cobertura
+  function tamanoUniforme(medidas, maxFs) {
     const n = medidas.length;
-    for (let fs = ETIQUETA.max; fs > ETIQUETA.min; fs -= 0.25) {
+    for (let fs = maxFs; fs > ETIQUETA.min; fs -= 0.25) {
       const cuantos = medidas.filter(m => m !== null && m >= fs).length;
       if (cuantos >= ETIQUETA.cobertura * n) return fs;
     }
@@ -485,7 +534,7 @@
     return w > 0 && h > 0 ? w * h : 0;
   }
 
-  // Zonas ocupadas por los elementos flotantes visibles (panel, leyenda, tarjeta de impresión)
+  // Zonas ocupadas por los elementos flotantes visibles del mapa principal (panel, leyenda, tarjeta)
   function obstaculosVisibles(z) {
     const base = document.getElementById('map').getBoundingClientRect();
     const rects = [];
@@ -531,38 +580,37 @@
     return mejor ? mejor.c : centroPx;
   }
 
-  // Pone el número en la posición c (px de mundo) con el tamaño fs
-  function ponerEtiqueta(e, c, fs, z) {
-    e.marker.setLatLng(map.unproject(L.point(c[0], c[1]), z));
+  // Pone el número e en la posición c (px de mundo) del mapa m, con tamaño fs
+  function ponerEtiqueta(m, e, c, fs, z) {
+    e.marker.setLatLng(m.unproject(L.point(c[0], c[1]), z));
     const span = e.marker.getElement()?.querySelector('.etiqueta-seccion');
     if (!span) return;
     span.style.display = '';
     span.style.fontSize = fs.toFixed(2) + 'px';
   }
 
-  // Recalcula tamaño y posición de los números para el zoom actual:
+  // Coloca los números de un mapa m (registros: { marker, pole0, ringRel0, anchoPorPx }):
   // 1) un solo tamaño para todos;
   // 2) los que caben a ese tamaño se quedan en el centro de su sección;
   // 3) los demás se acomodan lo más cerca posible de su sección, sin encimarse con otros números.
-  function ajustarEtiquetas() {
-    if (!etiquetas.length) return;
-    const z = map.getZoom();
+  function ajustarEtiquetasEn(m, registros, obstaculos, maxFs) {
+    if (!registros.length) return;
+    const z = m.getZoom();
     const escala = Math.pow(2, z);
-    const obstaculos = obstaculosVisibles(z);
-    const vista = map.getPixelBounds();
+    const vista = m.getPixelBounds();
 
-    const medidas = etiquetas.map(e =>
-      mayorTamanoQueCabe(e.ringRel0.map(([x, y]) => [x * escala, y * escala]), e.anchoPorPx)
+    const medidas = registros.map(e =>
+      mayorTamanoQueCabe(e.ringRel0.map(([x, y]) => [x * escala, y * escala]), e.anchoPorPx, maxFs)
     );
-    const tamano = tamanoUniforme(medidas);
+    const tamano = tamanoUniforme(medidas, maxFs);
 
     const ocupadas = [];
     const sinCabida = [];
 
-    etiquetas.forEach((e, i) => {
+    registros.forEach((e, i) => {
       if (medidas[i] === null || medidas[i] < tamano) { sinCabida.push(e); return; }
       const c = [e.pole0[0] * escala, e.pole0[1] * escala];
-      ponerEtiqueta(e, c, tamano, z);
+      ponerEtiqueta(m, e, c, tamano, z);
       ocupadas.push(rectanguloEtiqueta(c, tamano, e.anchoPorPx));
     });
 
@@ -570,15 +618,15 @@
       const centroPx = [e.pole0[0] * escala, e.pole0[1] * escala];
       const radio = Math.max(...e.ringRel0.map(([x, y]) => Math.hypot(x, y))) * escala;
       const c = colocarCercaDeLaSeccion(centroPx, radio, tamano, e.anchoPorPx, ocupadas, obstaculos, vista);
-      ponerEtiqueta(e, c, tamano, z);
+      ponerEtiqueta(m, e, c, tamano, z);
       ocupadas.push(rectanguloEtiqueta(c, tamano, e.anchoPorPx));
     });
   }
 
-  // Cambia la opacidad del relleno de todas las secciones
-  function aplicarRelleno(opacidad) {
-    opacidadRelleno = opacidad;
-    capaSecciones.eachLayer(grupo => grupo.eachLayer(poligono => poligono.setStyle({ fillOpacity: opacidad })));
+  // Números del mapa principal, al cambiar el zoom o mover el mapa
+  function ajustarEtiquetas() {
+    if (!etiquetas.length) return;
+    ajustarEtiquetasEn(map, etiquetas, obstaculosVisibles(map.getZoom()), ETIQUETA.max);
   }
 
   /* ---------- Encuadre e impresión ---------- */
@@ -615,16 +663,15 @@
     return anillos;
   }
 
-  // Velo blanco sobre todo lo que queda fuera del distrito, para que el distrito destaque
-  function ponerVelo(dist) {
-    quitarVelo();
+  // Velo blanco sobre lo que queda fuera del distrito en el mapa m
+  function ponerVelo(m, dist) {
     const anillos = anillosDelDistrito(dist);
-    if (!anillos.length) return;
+    if (!anillos.length) return null;
     const mundo = [[-85, -180], [-85, 180], [85, 180], [85, -180]];
-    velo = L.polygon([mundo, ...anillos], {
+    return L.polygon([mundo, ...anillos], {
       pane: 'velo', stroke: false, fillColor: '#ffffff', fillOpacity: VELO_FUERA,
       fillRule: 'evenodd', interactive: false
-    }).addTo(map);
+    }).addTo(m);
   }
 
   function quitarVelo() {
@@ -653,8 +700,8 @@
     ));
   }
 
-  // Encuadra el distrito lo más grande posible y centrado. Si la tarjeta tapa una sección,
-  // se baja un poco el zoom hasta que quede libre.
+  // Encuadra el distrito lo más grande posible y centrado en el mapa principal.
+  // Si la tarjeta tapa una sección, se baja un poco el zoom hasta que quede libre.
   function encuadrarDistrito(limites) {
     const tarjeta = document.getElementById('resumen-mapa');
     const tw = tarjeta.offsetWidth, th = tarjeta.offsetHeight;
@@ -672,11 +719,102 @@
     map.setView(centro, zMax, { animate: false });
   }
 
-  // Prepara el mapa (tamaño de hoja, encuadre, velo, relleno ligero, tarjeta) y el reporte
+  // Promesa que se resuelve cuando un mapa base termina de descargar sus teselas
+  // (o al cabo de un tiempo máximo). Se registra antes de mover el mapa para no perder eventos.
+  function registrarCargaTeselas(capa) {
+    return new Promise(resolve => {
+      let empezo = false, t1, t2;
+      const alEmpezar = () => { empezo = true; };
+      const fin = () => {
+        capa.off('tileloadstart', alEmpezar);
+        capa.off('load', fin);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        setTimeout(resolve, 250);
+      };
+      capa.on('tileloadstart', alEmpezar);
+      capa.on('load', fin);
+      t1 = setTimeout(() => { if (!empezo) fin(); }, 800); // no había teselas nuevas que bajar
+      t2 = setTimeout(fin, 8000);                           // tope de seguridad
+    });
+  }
+
+  // Hojas de detalle: el distrito se parte en dos mitades y cada mitad se muestra con más zoom
+  function crearPaginasDetalle(dist, limites, textoDistrito) {
+    const contenedor = document.getElementById('detalle-impresion');
+    contenedor.innerHTML = '';
+
+    const sw = limites.getSouthWest(), ne = limites.getNorthEast();
+    const latMedia = (sw.lat + ne.lat) / 2;
+    const anchoReal = (ne.lng - sw.lng) * Math.cos(latMedia * Math.PI / 180);
+    const altoReal = ne.lat - sw.lat;
+    const porLng = anchoReal >= altoReal;   // se parte a lo largo del lado más largo
+    const corte = porLng ? (sw.lng + ne.lng) / 2 : (sw.lat + ne.lat) / 2;
+
+    const mitades = porLng
+      ? [ { nombre: 'oeste', limites: L.latLngBounds([sw.lat, sw.lng], [ne.lat, corte]) },
+          { nombre: 'este',  limites: L.latLngBounds([sw.lat, corte], [ne.lat, ne.lng]) } ]
+      : [ { nombre: 'sur',   limites: L.latLngBounds([sw.lat, sw.lng], [corte, ne.lng]) },
+          { nombre: 'norte', limites: L.latLngBounds([corte, sw.lng], [ne.lat, ne.lng]) } ];
+
+    // Cada número va a la mitad donde está su centro
+    const enMitad = (e, i) => porLng
+      ? (i === 0 ? e.polo.lng <= corte : e.polo.lng > corte)
+      : (i === 0 ? e.polo.lat < corte : e.polo.lat >= corte);
+
+    mitades.forEach((mitad, i) => {
+      const id = 'mapa-detalle-' + i;
+      const pagina = document.createElement('div');
+      pagina.className = 'pagina-detalle';
+      pagina.innerHTML = `
+        <p class="titulo-detalle">${textoDistrito} | Detalle: mitad ${mitad.nombre}</p>
+        <div id="${id}" class="mapa-detalle"></div>`;
+      contenedor.appendChild(pagina);
+
+      const m = L.map(id, {
+        zoomSnap: 0.25, maxZoom: 19, zoomControl: false,
+        dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false,
+        boxZoom: false, keyboard: false, zoomAnimation: false, fadeAnimation: false,
+        markerZoomAnimation: false, inertia: false
+      });
+      m.setView(mitad.limites.getCenter(), m.getBoundsZoom(mitad.limites, false, L.point(16, 16)), { animate: false });
+      m.createPane('velo');
+      m.getPane('velo').style.zIndex = 350;
+      detalleMapas.push(m);
+
+      const teselas = L.tileLayer(URL_TELAS, { attribution: ATRIBUCION, maxZoom: 19 }).addTo(m);
+      cargasPendientes.push(registrarCargaTeselas(teselas));
+
+      fuentesDelDistrito(dist).forEach(g => L.geoJSON(g, {
+        style: { color: '#002244', weight: 3, fillOpacity: 0, dashArray: '6, 6' }, interactive: false
+      }).addTo(m));
+
+      L.geoJSON({ type: 'FeatureCollection', features: seleccionSecciones }, {
+        style: f => estiloSeccion(f, RELLENO.impresion, BORDE.impresion), interactive: false
+      }).addTo(m);
+
+      ponerVelo(m, dist);
+
+      const grupo = L.layerGroup().addTo(m);
+      const registros = etiquetas.filter(e => enMitad(e, i)).map(e => ({
+        marker: L.marker(e.polo, {
+          icon: L.divIcon({ className: 'etiqueta-wrap', html: e.html, iconSize: [0, 0] }),
+          interactive: false, keyboard: false
+        }).addTo(grupo),
+        pole0: e.pole0,
+        ringRel0: e.ringRel0,
+        anchoPorPx: e.anchoPorPx
+      }));
+      ajustarEtiquetasEn(m, registros, [], ETIQUETA.maxDetalle);
+    });
+  }
+
+  // Prepara el mapa (tamaño de hoja, encuadre, velo, estilos, hojas de detalle) y el reporte
   function prepararImpresion() {
     if (impresionPreparada) return;
     impresionPreparada = true;
     vistaAntesDeImprimir = { centro: map.getCenter(), zoom: map.getZoom() };
+    cargasPendientes = [registrarCargaTeselas(capaBase)];
 
     const dist = document.getElementById('select-distrito').value;
     const textoDistrito = dist === 'TODOS' ? 'Distritos Locales 11 y 15' : 'Distrito Local ' + dist;
@@ -699,15 +837,19 @@
       generarTablaAgrupadaPDF('🔴 SECCIONES ROJAS (De 0 a 4 firmas)', 'bg-red-600', window.seccionesRojas);
     document.getElementById('reporte-impresion').classList.remove('hidden');
 
-    // Primero el mapa adquiere el tamaño de la hoja; después se encuadra el distrito
+    // Primero el mapa adquiere el tamaño de la hoja
     document.body.classList.add('modo-impresion');
     map.invalidateSize({ animate: false });
 
     const limites = limitesDelDistrito(dist);
-    if (limites && limites.isValid()) encuadrarDistrito(limites);
+    if (limites && limites.isValid()) {
+      encuadrarDistrito(limites);
+      if (IMPRESION_DETALLE) crearPaginasDetalle(dist, limites, textoDistrito);
+    }
 
-    aplicarRelleno(RELLENO.impresion);
-    ponerVelo(dist);
+    aplicarEstiloSecciones(RELLENO.impresion, BORDE.impresion);
+    quitarVelo();
+    velo = ponerVelo(map, dist);
     ajustarEtiquetas();
   }
 
@@ -717,32 +859,19 @@
     impresionPreparada = false;
     document.body.classList.remove('modo-impresion');
     document.getElementById('reporte-impresion').classList.add('hidden');
+
+    detalleMapas.forEach(m => m.remove());
+    detalleMapas = [];
+    document.getElementById('detalle-impresion').innerHTML = '';
+    cargasPendientes = [];
+
     quitarVelo();
-    aplicarRelleno(RELLENO.pantalla);
+    aplicarEstiloSecciones(RELLENO.pantalla, BORDE.pantalla);
     map.invalidateSize({ animate: false });
     if (vistaAntesDeImprimir) {
       map.setView(vistaAntesDeImprimir.centro, vistaAntesDeImprimir.zoom, { animate: false });
     }
     vistaAntesDeImprimir = null;
-  }
-
-  // Espera a que el mapa base termine de descargar sus teselas antes de imprimir
-  function esperarTeselas() {
-    return new Promise(resolve => {
-      let empezo = false, t1, t2;
-      const alEmpezar = () => { empezo = true; };
-      const fin = () => {
-        capaBase.off('tileloadstart', alEmpezar);
-        capaBase.off('load', fin);
-        clearTimeout(t1);
-        clearTimeout(t2);
-        setTimeout(resolve, 250);
-      };
-      capaBase.on('tileloadstart', alEmpezar);
-      capaBase.on('load', fin);
-      t1 = setTimeout(() => { if (!empezo) fin(); }, 1000); // no había teselas nuevas que bajar
-      t2 = setTimeout(fin, 8000);                            // tope de seguridad
-    });
   }
 
   function generarTablaAgrupadaPDF(titulo, colorHeader, secciones) {
@@ -777,7 +906,7 @@
     `;
   }
 
-  /* ---------- Mapa ---------- */
+  /* ---------- Mapa principal ---------- */
 
   function actualizarVista() {
     capaContornoDistrito.clearLayers();
@@ -813,45 +942,13 @@
     window.seccionesAmarillas = [];
     window.seccionesRojas = [];
 
-    const layerGroup = L.geoJSON(datosSeccionesGeoJSON, {
-      filter: function(feature) {
-        if (distritoSeleccionado !== 'TODOS') {
-          const distL = String(feature.properties.DISTRITO_L || '').trim();
-          if (distL !== distritoSeleccionado) return false;
-        }
+    const todas = datosSeccionesGeoJSON.type === 'FeatureCollection'
+      ? datosSeccionesGeoJSON.features
+      : [datosSeccionesGeoJSON];
+    seleccionSecciones = todas.filter(f => pasaFiltros(f, distritoSeleccionado, estatusSeleccionado));
 
-        const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
-        let tipoEstatus = 'GRIS';
-
-        if (valFirmas !== null && valFirmas !== undefined && valFirmas !== '') {
-          const recabadas = parseFloat(valFirmas) || 0;
-          tipoEstatus = calcularEstatus(recabadas);
-        }
-
-        if (estatusSeleccionado !== 'TODOS' && estatusSeleccionado !== tipoEstatus) {
-          return false;
-        }
-
-        return true;
-      },
-      style: function(feature) {
-        const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
-
-        if (valFirmas === null || valFirmas === undefined || valFirmas === '') {
-          return { color: '#64748b', weight: 1.2, fillColor: '#94a3b8', fillOpacity: opacidadRelleno };
-        }
-
-        const recabadas = parseFloat(valFirmas) || 0;
-        let color = '#ef4444'; // Rojo (0 a 4)
-
-        if (recabadas >= 10) {
-          color = '#22c55e'; // Verde (10+)
-        } else if (recabadas >= 5) {
-          color = '#eab308'; // Amarillo (5 a 9)
-        }
-
-        return { color: '#003366', weight: 1.5, fillColor: color, fillOpacity: opacidadRelleno };
-      },
+    const layerGroup = L.geoJSON({ type: 'FeatureCollection', features: seleccionSecciones }, {
+      style: f => estiloSeccion(f, opacidadRelleno, grosorBorde),
       onEachFeature: function(feature, layer) {
         const seccion = feature.properties.SECCION || 'N/A';
         const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
@@ -915,17 +1012,17 @@
             const polo = map.unproject(L.point(pole0[0], pole0[1]), 0);
 
             const estilo = ESTILO_ETIQUETA[badgeClass] || ESTILO_ETIQUETA['bg-meta-na'];
+            const html = `<span class="etiqueta-seccion" style="background:${estilo.fondo};color:${estilo.texto}">${seccion}</span>`;
             const marker = L.marker(polo, {
-              icon: L.divIcon({
-                className: 'etiqueta-wrap',
-                html: `<span class="etiqueta-seccion" style="background:${estilo.fondo};color:${estilo.texto}">${seccion}</span>`,
-                iconSize: [0, 0]
-              }),
+              icon: L.divIcon({ className: 'etiqueta-wrap', html, iconSize: [0, 0] }),
               interactive: false,
               keyboard: false
             });
             capaEtiquetas.addLayer(marker);
             etiquetas.push({
+              texto: String(seccion),
+              html,
+              polo,
               marker,
               pole0,
               ringRel0: ring0.map(([x, y]) => [x - pole0[0], y - pole0[1]]),
@@ -965,7 +1062,7 @@
 
   async function imprimirPantalla() {
     prepararImpresion();
-    await esperarTeselas(); // así el mapa no sale con zonas sin cargar
+    await Promise.all(cargasPendientes); // así los mapas no salen con zonas sin cargar
     window.print();
   }
 
