@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visor de Firmas Electorales</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+  :root { --azul:#003366; --azul-suave:#e6edf5; --fondo:#f1f5f9; --borde:#dbe3ec; }
+  html, body { height:100%; margin:0; padding:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--fondo); color:#1e293b; }
+
+  #app { display:flex; height:calc(100vh - 64px); position:relative; overflow:hidden; }
+  #sidebar { width:340px; flex:none; box-sizing:border-box; padding:16px; display:flex; flex-direction:column; gap:20px; background:#fff; border-right:1px solid var(--borde); overflow-y:auto; transition:margin-left .25s ease; z-index:500; }
+  #sidebar.colapsado { margin-left:-340px; }
+  #sidebar h2 { margin:0 0 8px; font-size:13px; font-weight:700; color:var(--azul); }
+
+  .segmentos { display:flex; gap:4px; padding:4px; background:var(--azul-suave); border-radius:10px; }
+  .btn-dist { flex:1; border:0; background:transparent; padding:8px 4px; border-radius:7px; font-family:inherit; font-size:12px; font-weight:600; color:var(--azul); cursor:pointer; }
+  .btn-dist.activo { background:var(--azul); color:#fff; }
+  .capa { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; cursor:pointer; }
+  .capa input { accent-color:var(--azul); width:15px; height:15px; margin:0; }
+  #btn-imprimir { width:100%; padding:9px 12px; border:0; border-radius:8px; background:var(--azul); color:#fff; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+  #btn-imprimir:hover { background:#002855; }
+
+  #mapa-wrap { flex:1; position:relative; min-width:0; z-index:0; }
+  #map { position:absolute; inset:0; width:100%; height:100%; }
+
+  .flotante { position:absolute; z-index:600; background:rgba(255,255,255,.96); border:1px solid var(--borde); border-radius:10px; box-shadow:0 2px 10px rgba(15,23,42,.12); backdrop-filter:blur(4px); }
+  #btn-panel { top:12px; left:12px; padding:7px 14px; font-family:inherit; font-size:13px; font-weight:700; color:var(--azul); cursor:pointer; }
+  #coords { top:56px; left:12px; padding:4px 10px; font-size:11px; color:#475569; font-variant-numeric:tabular-nums; }
+  #barra-stats { bottom:12px; left:12px; display:flex; align-items:center; gap:20px; padding:10px 16px; }
+  .stat { text-align:center; }
+  .stat b { display:block; font-size:18px; color:var(--azul); }
+  .stat span { font-size:11px; color:#64748b; }
+  .barra-avance { width:120px; }
+  #leyenda { bottom:38px; right:12px; padding:10px 14px; font-size:12px; font-weight:600; color:#1e293b; background:#fff; min-width:210px; }
+  #leyenda > div { padding:2px 0; }
+  #leyenda .dot { width:11px; height:11px; margin-right:8px; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+
+  .etiqueta-wrap { pointer-events:none; }
+  .etiqueta-seccion { position:absolute; left:0; top:0; transform:translate(-50%,-50%); border:1px solid #64748b; border-radius:3px; font-weight:700; line-height:1.1; padding:0.5px 3px; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,0.15); background:#ffffff; }
+  .badge-status { padding:2px 6px; border-radius:4px; font-weight:700; font-size:10px; color:#fff; display:inline-block; }
+  .bg-meta-ok { background-color:#22c55e; }
+  .bg-meta-proceso { background-color:#eab308; color:#000; }
+  .bg-meta-critico { background-color:#ef4444; }
+  .bg-meta-na { background-color:#94a3b8; color:#fff; }
+
+  #titulo-mapa { display:none; }
+  #resumen-mapa { display:none; }
+  #detalle-impresion { display:none; }
+
+  body.modo-impresion #header-bar,
+  body.modo-impresion #sidebar,
+  body.modo-impresion #btn-panel,
+  body.modo-impresion #coords,
+  body.modo-impresion #barra-stats,
+  body.modo-impresion #leyenda,
+  body.modo-impresion .leaflet-control-zoom { display:none !important; }
+  body.modo-impresion #app { display:block !important; height:auto !important; overflow:visible !important; }
+  body.modo-impresion #mapa-wrap { flex:none; width:1095px; height:765px; }
+  body.modo-impresion #resumen-mapa { display:block; position:absolute; top:8px; left:8px; z-index:1000; width:340px; padding:8px 10px; background:rgba(248,250,252,.95); border:1px solid var(--borde); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+
+  @media print {
+    @page { size:A4 landscape; margin:3mm; }
+    * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    body { background:#fff !important; }
+    #reporte-impresion { break-before:page; page-break-before:always; }
+    #pdf-agrupado-container > div, tr { break-inside:avoid; }
+  }
+
+  @media (max-width:720px) {
+    #sidebar { position:absolute; top:0; bottom:0; left:0; width:86%; max-width:340px; box-shadow:4px 0 16px rgba(0,0,0,.2); }
+    #sidebar.colapsado { margin-left:-100%; }
+    #barra-stats { gap:12px; padding:8px 10px; }
+    .stat b { font-size:15px; }
+    .barra-avance { width:70px; }
+    #leyenda { display:none; }
+  }
+
+  /* ---- Modos de filtro, búsqueda y reportes ---- */
+  .oculto { display:none !important; }
+  .btn-modo { flex:1; border:0; background:transparent; padding:8px 4px; border-radius:7px; font-family:inherit; font-size:12px; font-weight:600; color:var(--azul); cursor:pointer; }
+  .btn-modo.activo { background:var(--azul); color:#fff; }
+  .btn-acc { width:100%; padding:9px 12px; border:0; border-radius:8px; background:var(--azul); color:#fff; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+  .btn-acc:hover { background:#002855; }
+  .campo { box-sizing:border-box; width:100%; padding:8px; border:1px solid var(--borde); border-radius:8px; font-size:13px; }
+  #msg-seccion, #msg-direccion { font-size:11px; color:#475569; margin:6px 0 0; min-height:14px; }
+  #hojas { position:fixed; inset:0; z-index:3000; background:#334155; overflow:auto; padding:12px; display:none; }
+  #hojas.abierto { display:block; }
+  .barra-hojas { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:#fff; padding:10px 12px; margin:-12px -12px 12px; background:#0f172a; font-size:13px; }
+  .btn-barra { padding:7px 12px; border:0; border-radius:7px; background:#fff; color:var(--azul); font-weight:700; font-size:12px; cursor:pointer; }
+  .hoja { position:relative; overflow:hidden; box-sizing:border-box; width:1060px; height:740px; margin:0 auto 14px; background:#fff; color:#1e293b; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; break-after:page; page-break-after:always; }
+  .hoja:last-child { break-after:auto; page-break-after:auto; }
+  .cab-hoja { display:flex; justify-content:space-between; align-items:flex-end; padding:12px 22px 10px; border-bottom:3px solid var(--azul); }
+  .cab-hoja h2 { margin:0; font-size:22px; color:var(--azul); }
+  .cab-hoja p { margin:2px 0 0; font-size:12px; color:#64748b; }
+  .cab-hoja .marca { font-size:11px; color:#64748b; }
+  .hoja.mapa { display:flex; flex-direction:column; }
+  .cuerpo-mapa { flex:1; position:relative; min-height:0; }
+  .hoja-mapa { position:absolute; inset:0; }
+  .leyenda-hoja { position:absolute; left:14px; bottom:14px; z-index:1001; display:flex; flex-direction:column; gap:4px; background:#fff; border:1px solid var(--borde); border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.15); padding:8px 12px; font-size:11px; color:#334155; min-width:220px; }
+  .leyenda-hoja.derecha { left:auto; right:14px; }
+  .ley { display:flex; align-items:center; gap:7px; }
+  .ley i { display:inline-block; width:11px; height:11px; border-radius:50%; flex:none; }
+  .ley b { margin-left:auto; padding-left:14px; color:#0f172a; }
+  .hoja .leaflet-control-attribution { font-size:8px; }
+  .hoja.tabla { height:auto; min-height:740px; overflow:visible; padding-bottom:20px; }
+  .tabla-cuerpo { padding:0 22px; }
+  .tarjetas { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:14px 0 16px; }
+  .tarjeta { border:1px solid #dbe3ec; border-left:4px solid var(--azul); border-radius:8px; padding:8px 12px; background:#f8fafc; }
+  .tarjeta span { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; }
+  .tarjeta b { font-size:22px; color:var(--azul); font-variant-numeric:tabular-nums; }
+  .grid-grupos { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; align-items:start; }
+  td.sec { font-weight:700; color:var(--azul); }
+  .bloque { border:1px solid #dbe3ec; border-radius:8px; overflow:hidden; }
+  .titulo-bloque { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; color:#fff; font-size:11px; font-weight:700; }
+  .titulo-bloque b { background:rgba(255,255,255,.22); border-radius:10px; padding:1px 8px; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { background:#f1f5f9; color:#334155; text-align:left; padding:5px 8px; font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; }
+  td { padding:4px 8px; border-top:1px solid #eef2f7; font-variant-numeric:tabular-nums; }
+  tr.par td { background:#f8fafc; }
+  .num { text-align:right !important; }
+  .vacio { color:#94a3b8; text-align:center; font-style:italic; }
+  .tabla-resumen { margin-top:14px; }
+  .tabla-resumen th, .tabla-resumen td { padding:9px 10px; font-size:12px; }
+  .tabla-resumen tr.total td { font-weight:700; background:#e6edf5; border-top:2px solid var(--azul); }
+  .nota { font-size:10px; color:#64748b; margin:10px 0 0; }
+  @media print {
+    @page { size:A4 landscape; margin:5mm; }
+    html, body { height:auto !important; overflow:visible !important; background:#fff !important; }
+    body > *:not(#hojas) { display:none !important; }
+    #hojas { position:static !important; background:#fff !important; padding:0 !important; overflow:visible !important; }
+    .no-imprimir { display:none !important; }
+    .hoja { margin:0 !important; }
+    .hoja.tabla { height:auto !important; overflow:visible !important; }
+    .bloque, .tarjeta, tr { break-inside:avoid; }
+  }
+</style>
+</head>
+<body class="flex flex-col">
+
+<!-- ENCABEZADO -->
+<header id="header-bar" class="flex-none h-[64px] px-5 flex items-center gap-4 text-white shadow-md" style="background:var(--azul);">
+  <div class="flex items-center gap-2">
+    <img src="img/logo_partido.png" alt="Logo Partido" class="h-9 w-auto" onerror="this.remove()">
+    <img src="img/logo%20%C3%81ngel%20Luna.jpg" alt="Logo Ángel Luna" class="h-9 w-auto rounded" onerror="this.remove()">
+  </div>
+  <div class="border-l border-white/20 pl-4">
+    <h1 class="text-base font-bold leading-tight">Visor de Firmas Electorales</h1>
+    <p class="text-xs text-blue-200">Monitoreo de avance por sección · Meta de 10 firmas</p>
+  </div>
+</header>
+
+<div id="app">
+  <!-- PANEL LATERAL -->
+  <aside id="sidebar">
+    <section>
+      <h2>Filtrar por</h2>
+      <div class="segmentos">
+        <button class="btn-modo activo" data-modo="distrito" onclick="setModo('distrito')">Distrito</button>
+        <button class="btn-modo" data-modo="seccion" onclick="setModo('seccion')">Sección</button>
+        <button class="btn-modo" data-modo="ubicacion" onclick="setModo('ubicacion')">Ubicación</button>
+      </div>
+
+      <div id="panel-distrito" class="mt-3">
+        <div class="segmentos">
+          <button class="btn-dist activo" data-dist="TODOS" onclick="setDistrito('TODOS')">Ambos</button>
+          <button class="btn-dist" data-dist="11" onclick="setDistrito('11')">Distrito 11</button>
+          <button class="btn-dist" data-dist="15" onclick="setDistrito('15')">Distrito 15</button>
+        </div>
+        <select id="select-distrito" class="hidden" onchange="actualizarVista()">
+          <option value="TODOS">Todos los Distritos</option>
+          <option value="15">Distrito Local 15</option>
+          <option value="11">Distrito Local 11</option>
+        </select>
+      </div>
+
+      <div id="panel-seccion" class="mt-3 oculto">
+        <div class="flex gap-2">
+          <input id="input-seccion" type="number" inputmode="numeric" placeholder="Número de sección" class="campo" style="flex:1">
+          <button class="btn-acc" style="width:auto" onclick="buscarSeccion()">Ir</button>
+        </div>
+        <p id="msg-seccion"></p>
+      </div>
+
+      <div id="panel-ubicacion" class="mt-3 oculto">
+        <input id="input-calle" placeholder="Calle o avenida" class="campo">
+        <div class="flex gap-2 mt-2">
+          <input id="input-numero" placeholder="Número" class="campo" style="width:35%">
+          <input id="input-colonia" placeholder="Colonia (opcional)" class="campo" style="flex:1">
+        </div>
+        <button class="btn-acc mt-2" onclick="buscarDireccion()">Buscar en la CDMX</button>
+        <p id="msg-direccion"></p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Estatus</h2>
+      <select id="select-estatus" class="w-full p-2 border rounded-lg bg-white text-sm" onchange="actualizarVista()">
+        <option value="TODOS">Ver todos los estatus</option>
+        <option value="VERDE">🟢 Solo verdes (10 o más)</option>
+        <option value="AMARILLO">🟡 Solo amarillos (5 a 9)</option>
+        <option value="ROJO">🔴 Solo críticas (1 a 4)</option>
+        <option value="GRIS">⚪ Solo grises (sin firmas)</option>
+      </select>
+    </section>
+
+    <section>
+      <h2>Capas en el mapa</h2>
+      <label class="capa"><input type="checkbox" checked onchange="toggleCapa('contorno', this.checked)"> Contorno de distritos</label>
+      <label class="capa"><input type="checkbox" checked onchange="toggleCapa('secciones', this.checked)"> Secciones con color</label>
+      <label class="capa"><input type="checkbox" checked onchange="toggleCapa('etiquetas', this.checked)"> Número de sección</label>
+    </section>
+
+    <section>
+      <h2>Reporte</h2>
+      <button class="btn-acc" onclick="generarReporte()">📊 Reporte general por distrito</button>
+      <p class="text-xs text-slate-500 mt-2">Abre una vista previa con los mapas (distritos y vista general), el resumen y las tablas por estatus. Desde ahí imprime o guarda como PDF (horizontal, sin encabezados).</p>
+
+      <div class="mt-4 pt-3 border-t">
+        <p class="text-xs font-bold text-slate-600 mb-1">Reporte solo de estatus</p>
+        <label class="capa"><input type="checkbox" id="chk-verde"> 🟢 Verdes (10 o más)</label>
+        <label class="capa"><input type="checkbox" id="chk-amarillo"> 🟡 Amarillas (5 a 9)</label>
+        <label class="capa"><input type="checkbox" id="chk-rojo"> 🔴 Rojas (1 a 4)</label>
+        <label class="capa"><input type="checkbox" id="chk-gris"> ⚪ Grises (sin firmas)</label>
+        <button class="btn-acc mt-2" onclick="generarReporteSeleccion()">📄 Generar con los estatus marcados</button>
+        <p class="text-xs text-slate-500 mt-2">Usa el distrito elegido arriba (Ambos, 11 o 15). Es independiente del filtro de Estatus del mapa.</p>
+      </div>
+    </section>
+
+    <section class="flex-1">
+      <h2>Avance por sección</h2>
+      <table class="w-full text-left text-xs border-collapse">
+        <thead>
+          <tr class="bg-slate-100 text-slate-700 border-b">
+            <th class="p-2">Sec.</th>
+            <th class="p-2 text-center">Meta</th>
+            <th class="p-2 text-center">Firmas</th>
+            <th class="p-2 text-center">Falta</th>
+            <th class="p-2 text-center">Estatus</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-secciones-body"></tbody>
+      </table>
+    </section>
+  </aside>
+
+  <!-- MAPA -->
+  <div id="mapa-wrap">
+    <div id="map"></div>
+    <button id="btn-panel" class="flotante" onclick="toggleSidebar()">☰ Panel</button>
+    <div id="coords" class="flotante">LAT — · LON —</div>
+
+    <div id="barra-stats" class="flotante">
+      <div class="stat"><b id="kpi-meta">0</b><span>Meta total</span></div>
+      <div class="stat"><b id="kpi-recabadas" class="text-green-600">0</b><span>Recabadas</span></div>
+      <div class="stat"><b id="kpi-faltantes" class="text-red-600">0</b><span>Faltantes</span></div>
+      <div class="barra-avance">
+        <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden"><div id="kpi-barra" class="bg-green-500 h-2 rounded-full" style="width:0%"></div></div>
+        <span class="block text-center text-[11px] text-slate-500 mt-1">Avance general</span>
+      </div>
+    </div>
+
+    <!-- Resumen flotante sobre el mapa al imprimir -->
+    <div id="resumen-mapa">
+      <h2 class="text-sm font-bold text-blue-900">Mapa de Avance de Firmas</h2>
+      <p class="text-[10px] text-slate-600 mb-1.5"><span id="titulo-mapa-distrito"></span> | Generado: <span id="titulo-mapa-fecha"></span></p>
+
+      <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Resumen General de Firmas</div>
+      <div class="grid grid-cols-3 gap-1.5 text-center">
+        <div class="bg-white px-2 py-1 rounded border"><span class="block text-[10px] text-slate-500">Meta Total</span><b id="pdf-kpi-meta" class="text-sm text-blue-900">0</b></div>
+        <div class="bg-white px-2 py-1 rounded border"><span class="block text-[10px] text-slate-500">Recabadas</span><b id="pdf-kpi-recabadas" class="text-sm text-green-600">0</b></div>
+        <div class="bg-white px-2 py-1 rounded border"><span class="block text-[10px] text-slate-500">Faltantes</span><b id="pdf-kpi-faltantes" class="text-sm text-red-600">0</b></div>
+      </div>
+      <div class="w-full bg-slate-200 rounded-full h-2 mt-2 overflow-hidden">
+        <div id="pdf-kpi-barra" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-700 mt-2">
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Verde: 10+</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>Amarillo: 5-9</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Rojo: 1-4</span>
+      </div>
+    </div>
+
+    <div id="leyenda" class="flotante">
+      <div><span class="dot" style="background:#22c55e"></span>Completadas (10+)</div>
+      <div><span class="dot" style="background:#eab308"></span>En proceso (5 a 9)</div>
+      <div><span class="dot" style="background:#ef4444"></span>Crítica (1 a 4)</div>
+      <div><span class="dot" style="background:#94a3b8"></span>Sin firmas (0) / sin dato</div>
+    </div>
+  </div>
+</div>
+
+
+<div id="detalle-impresion"></div>
+
+<!-- REPORTE DE TABLAS (Página siguiente al imprimir) -->
+<div id="reporte-impresion" class="p-6 bg-white hidden">
+  <div class="flex justify-between items-center border-b-2 border-blue-900 pb-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-blue-900">Reporte General de Avance de Firmas</h1>
+      <p id="pdf-distrito-sub" class="text-sm font-bold text-slate-600">Distrito Local</p>
+    </div>
+    <div class="text-right text-xs text-slate-500">
+      <p>Generado: <span id="pdf-fecha"></span></p>
+      <p>Meta por sección: <b>10 firmas</b></p>
+    </div>
+  </div>
+
+  <div id="pdf-agrupado-container" class="space-y-6"></div>
+</div>
+
+<script>
+  const META_POR_SECCION = 10;
+  const URL_TELAS = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const ATRIBUCION = '© OpenStreetMap contributors';
+
+  const RELLENO = { pantalla: 0.40, impresion: 0.30 };
+  const BORDE = { pantalla: 1.5, impresion: 2.0 };
+  const ETIQUETA = { max: 12, min: 5.5, cobertura: 0.80 };
+  const CAJA = { padX: 2.5, borde: 1 };
+  const VELO_FUERA = 0.5;
+
+  const ESTILO_ETIQUETA = {
+    'bg-meta-ok':      { fondo: '#ffffff', texto: '#0f172a', borde: '#16a34a' },
+    'bg-meta-proceso': { fondo: '#ffffff', texto: '#0f172a', borde: '#ca8a04' },
+    'bg-meta-critico': { fondo: '#ffffff', texto: '#0f172a', borde: '#dc2626' },
+    'bg-meta-na':      { fondo: '#ffffff', texto: '#0f172a', borde: '#64748b' }
+  };
+
+  let map = L.map('map', { zoomSnap: 0.25 }).setView([19.395, -99.095], 13);
+  map.createPane('velo');
+  map.getPane('velo').style.zIndex = 350;
+
+  const capaBase = L.tileLayer(URL_TELAS, { attribution: ATRIBUCION, maxZoom: 19 }).addTo(map);
+  const capaContornoDistrito = L.layerGroup().addTo(map);
+  const capaSecciones = L.layerGroup().addTo(map);
+  const capaEtiquetas = L.layerGroup().addTo(map);
+
+  let datosSeccionesGeoJSON = null;
+  let datosDistrito11GeoJSON = null;
+  let datosDistrito15GeoJSON = null;
+  let seleccionSecciones = [];
+  let opacidadRelleno = RELLENO.pantalla;
+  let grosorBorde = BORDE.pantalla;
+  let etiquetas = [];
+  let vistaAntesDeImprimir = null;
+  let impresionPreparada = false;
+  let velo = null;
+  let cargasPendientes = [];
+
+  map.on('zoomend moveend', ajustarEtiquetas);
+
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('colapsado');
+    setTimeout(() => map.invalidateSize(), 300);
+  }
+
+  function obtenerValorAtributo(props, nombresPosibles) {
+    if (!props) return null;
+    for (let p in props) {
+      let claveNormalizada = p.replace(/\s+/g, '').toUpperCase();
+      for (let np of nombresPosibles) {
+        if (claveNormalizada === np.replace(/\s+/g, '').toUpperCase()) {
+          return props[p];
+        }
+      }
+    }
+    return null;
+  }
+
+  async function cargarArchivosRaiz() {
+    try {
+      const resSec = await fetch('Secciones_firmas.geojson');
+      if (resSec.ok) datosSeccionesGeoJSON = await resSec.json();
+
+      const resD11 = await fetch('Distrito Local 11.geojson');
+      if (resD11.ok) datosDistrito11GeoJSON = await resD11.json();
+
+      const resD15 = await fetch('Distrito Local 15.geojson');
+      if (resD15.ok) datosDistrito15GeoJSON = await resD15.json();
+
+      actualizarVista();
+    } catch (error) {
+      console.error("Error cargando GeoJSON:", error);
+    }
+  }
+
+  function calcularEstatus(recabadas) {
+    if (recabadas >= 10) return 'VERDE';
+    if (recabadas >= 5) return 'AMARILLO';
+    if (recabadas <= 0) return 'GRIS';
+    return 'ROJO';
+  }
+
+  function pasaFiltros(feature, distrito, estatus) {
+    if (distrito !== 'TODOS') {
+      const distL = String(feature.properties.DISTRITO_L || '').trim();
+      if (distL !== distrito) return false;
+    }
+    const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+    let tipoEstatus = 'GRIS';
+    if (valFirmas !== null && valFirmas !== undefined && valFirmas !== '') {
+      tipoEstatus = calcularEstatus(parseFloat(valFirmas) || 0);
+    }
+    return estatus === 'TODOS' || estatus === tipoEstatus;
+  }
+
+  function estiloSeccion(feature, opacidad, grosor) {
+    const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+    if (valFirmas === null || valFirmas === undefined || valFirmas === '') {
+      return { color: '#334155', weight: grosor, fillColor: '#94a3b8', fillOpacity: opacidad };
+    }
+    const recabadas = parseFloat(valFirmas) || 0;
+    let color = '#ef4444';
+    if (recabadas >= 10) color = '#22c55e';
+    else if (recabadas >= 5) color = '#eab308';
+    if (recabadas <= 0) color = '#94a3b8';
+    return { color: '#00203f', weight: grosor, fillColor: color, fillOpacity: opacidad };
+  }
+
+  function aplicarEstiloSecciones(opacidad, grosor) {
+    opacidadRelleno = opacidad;
+    grosorBorde = grosor;
+    capaSecciones.eachLayer(grupo => grupo.eachLayer(p => p.setStyle({ fillOpacity: opacidad, weight: grosor })));
+  }
+
+  function sumaCruzada(anillo) {
+    let S = 0;
+    for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+      S += anillo[j][0] * anillo[i][1] - anillo[i][0] * anillo[j][1];
+    }
+    return S;
+  }
+
+  function anilloPrincipal(geom) {
+    const poligonos = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
+    let mejor = [], mayor = -1;
+    poligonos.forEach(p => {
+      const a = Math.abs(sumaCruzada(p[0]));
+      if (a > mayor) { mayor = a; mejor = p[0]; }
+    });
+    return mejor;
+  }
+
+  function centroideAnillo(anillo) {
+    const S = sumaCruzada(anillo);
+    if (Math.abs(S) < 1e-12) {
+      return [
+        anillo.reduce((s, p) => s + p[0], 0) / anillo.length,
+        anillo.reduce((s, p) => s + p[1], 0) / anillo.length
+      ];
+    }
+    let cx = 0, cy = 0;
+    for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+      const cr = anillo[j][0] * anillo[i][1] - anillo[i][0] * anillo[j][1];
+      cx += (anillo[j][0] + anillo[i][0]) * cr;
+      cy += (anillo[j][1] + anillo[i][1]) * cr;
+    }
+    return [cx / (3 * S), cy / (3 * S)];
+  }
+
+  function distanciaSegmentoAlCuadrado(px, py, ax, ay, bx, by) {
+    let x = ax, y = ay;
+    const dx = bx - ax, dy = by - ay;
+    if (dx !== 0 || dy !== 0) {
+      const t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+      if (t > 1) { x = bx; y = by; }
+      else if (t > 0) { x += dx * t; y += dy * t; }
+    }
+    return (px - x) ** 2 + (py - y) ** 2;
+  }
+
+  function distanciaAlBorde(x, y, anillo) {
+    let dentro = false, minD2 = Infinity;
+    for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+      const [xi, yi] = anillo[i];
+      const [xj, yj] = anillo[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+        dentro = !dentro;
+      }
+      minD2 = Math.min(minD2, distanciaSegmentoAlCuadrado(x, y, xj, yj, xi, yi));
+    }
+    return (dentro ? 1 : -1) * Math.sqrt(minD2);
+  }
+
+  function poloDeInaccesibilidad(anillo) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    anillo.forEach(([x, y]) => {
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    });
+    const ancho = maxX - minX, alto = maxY - minY;
+    const lado = Math.min(ancho, alto);
+    if (lado <= 0) return [minX, minY];
+    const precision = lado * 0.01;
+
+    const celda = (x, y, h) => {
+      const d = distanciaAlBorde(x, y, anillo);
+      return { x, y, h, d, max: d + h * Math.SQRT2 };
+    };
+    const insertar = (cola, c) => {
+      let i = cola.length;
+      while (i > 0 && cola[i - 1].max > c.max) i--;
+      cola.splice(i, 0, c);
+    };
+
+    const cola = [];
+    const h0 = lado / 2;
+    for (let x = minX; x < maxX; x += lado) {
+      for (let y = minY; y < maxY; y += lado) {
+        insertar(cola, celda(x + h0, y + h0, h0));
+      }
+    }
+
+    const [cx, cy] = centroideAnillo(anillo);
+    let mejor = celda(cx, cy, 0);
+    const caja = celda(minX + ancho / 2, minY + alto / 2, 0);
+    if (caja.d > mejor.d) mejor = caja;
+
+    while (cola.length) {
+      const c = cola.pop();
+      if (c.d > mejor.d) mejor = c;
+      if (c.max - mejor.d <= precision) continue;
+      const h = c.h / 2;
+      insertar(cola, celda(c.x - h, c.y - h, h));
+      insertar(cola, celda(c.x + h, c.y - h, h));
+      insertar(cola, celda(c.x - h, c.y + h, h));
+      insertar(cola, celda(c.x + h, c.y + h, h));
+    }
+    return [mejor.x, mejor.y];
+  }
+
+  const medidorTexto = document.createElement('canvas').getContext('2d');
+  function anchoPorPixel(texto) {
+    medidorTexto.font = '700 100px system-ui, -apple-system, sans-serif';
+    return medidorTexto.measureText(texto).width / 100;
+  }
+
+  function medidasCaja(fs, anchoPorPx) {
+    return {
+      hw: (anchoPorPx * fs + 2 * CAJA.padX + 2 * CAJA.borde) / 2 + 1,
+      hh: (fs * 1.2 + 2 * CAJA.borde) / 2 + 1
+    };
+  }
+
+  function orientacion(p, q, r) {
+    return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  }
+  function segmentosSeCruzan(p1, p2, p3, p4) {
+    const d1 = orientacion(p3, p4, p1), d2 = orientacion(p3, p4, p2);
+    const d3 = orientacion(p1, p2, p3), d4 = orientacion(p1, p2, p4);
+    return d1 * d2 < 0 && d3 * d4 < 0;
+  }
+
+  function cabeRectangulo(contorno, hw, hh) {
+    for (const [x, y] of contorno) {
+      if (Math.abs(x) < hw && Math.abs(y) < hh) return false;
+    }
+    const esquinas = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]];
+    for (let i = 0, j = contorno.length - 1; i < contorno.length; j = i++) {
+      for (let k = 0; k < 4; k++) {
+        if (segmentosSeCruzan(contorno[j], contorno[i], esquinas[k], esquinas[(k + 1) % 4])) return false;
+      }
+    }
+    return true;
+  }
+
+  function mayorTamanoQueCabe(contorno, anchoPorPx, maxFs) {
+    const cabe = fs => {
+      const { hw, hh } = medidasCaja(fs, anchoPorPx);
+      return cabeRectangulo(contorno, hw, hh);
+    };
+    if (cabe(maxFs)) return maxFs;
+    if (!cabe(ETIQUETA.min)) return null;
+
+    let bajo = ETIQUETA.min, alto = maxFs;
+    for (let i = 0; i < 8; i++) {
+      const medio = (bajo + alto) / 2;
+      if (cabe(medio)) bajo = medio; else alto = medio;
+    }
+    return bajo;
+  }
+
+  function tamanoUniforme(medidas, maxFs) {
+    const n = medidas.length;
+    for (let fs = maxFs; fs > ETIQUETA.min; fs -= 0.25) {
+      const cuantos = medidas.filter(m => m !== null && m >= fs).length;
+      if (cuantos >= ETIQUETA.cobertura * n) return fs;
+    }
+    return ETIQUETA.min;
+  }
+
+  function rectanguloEtiqueta(c, fs, anchoPorPx) {
+    const { hw, hh } = medidasCaja(fs, anchoPorPx);
+    return { x1: c[0] - hw, y1: c[1] - hh, x2: c[0] + hw, y2: c[1] + hh };
+  }
+
+  function seSolapan(a, b) {
+    return a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+  }
+
+  function areaSolape(a, b) {
+    const w = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);
+    const h = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
+    return w > 0 && h > 0 ? w * h : 0;
+  }
+
+  function obstaculosVisibles(z) {
+    const base = document.getElementById('map').getBoundingClientRect();
+    const rects = [];
+    document.querySelectorAll('#mapa-wrap .flotante, #resumen-mapa').forEach(el => {
+      if (!el.offsetParent) return;
+      const r = el.getBoundingClientRect();
+      const a = map.project(map.containerPointToLatLng(L.point(r.left - base.left, r.top - base.top)), z);
+      const b = map.project(map.containerPointToLatLng(L.point(r.right - base.left, r.bottom - base.top)), z);
+      const m = 4;
+      rects.push({
+        x1: Math.min(a.x, b.x) - m, y1: Math.min(a.y, b.y) - m,
+        x2: Math.max(a.x, b.x) + m, y2: Math.max(a.y, b.y) + m
+      });
+    });
+    return rects;
+  }
+
+  function colocarCercaDeLaSeccion(centroPx, radio, fs, anchoPorPx, ocupadas, obstaculos, vista) {
+    const { hw, hh } = medidasCaja(fs, anchoPorPx);
+    const m = 2;
+    const dMax = Math.min(radio + 40, 160);
+    let mejor = null;
+
+    for (let d = 0; d <= dMax; d += 2.5) {
+      const puntos = d === 0 ? 1 : 16;
+      for (let k = 0; k < puntos; k++) {
+        const a = (k / 16) * 2 * Math.PI;
+        const c = d === 0 ? centroPx : [centroPx[0] + d * Math.cos(a), centroPx[1] + d * Math.sin(a)];
+        const r = { x1: c[0] - hw, y1: c[1] - hh, x2: c[0] + hw, y2: c[1] + hh };
+
+        if (r.x1 < vista.min.x + m || r.y1 < vista.min.y + m ||
+            r.x2 > vista.max.x - m || r.y2 > vista.max.y - m) continue;
+        if (obstaculos.some(o => seSolapan(o, r))) continue;
+
+        let coste = 0;
+        for (const o of ocupadas) coste += areaSolape(o, r);
+        if (coste === 0) return c;
+        if (!mejor || coste < mejor.coste) mejor = { c, coste };
+      }
+    }
+    return mejor ? mejor.c : centroPx;
+  }
+
+  function ponerEtiqueta(m, e, c, fs, z) {
+    e.marker.setLatLng(m.unproject(L.point(c[0], c[1]), z));
+    const span = e.marker.getElement()?.querySelector('.etiqueta-seccion');
+    if (!span) return;
+    span.style.display = '';
+    span.style.fontSize = fs.toFixed(2) + 'px';
+  }
+
+  function ajustarEtiquetasEn(m, registros, obstaculos, maxFs) {
+    if (!registros.length) return;
+    const z = m.getZoom();
+    const escala = Math.pow(2, z);
+    const vista = m.getPixelBounds();
+
+    const medidas = registros.map(e =>
+      mayorTamanoQueCabe(e.ringRel0.map(([x, y]) => [x * escala, y * escala]), e.anchoPorPx, maxFs)
+    );
+    const uniforme = tamanoUniforme(medidas, maxFs);
+    const ocupadas = [];
+    const sinCabida = [];
+
+    registros.forEach((e, i) => {
+      if (medidas[i] === null) { sinCabida.push(e); return; }
+      const fs = Math.min(uniforme, medidas[i]);
+      const c = [e.pole0[0] * escala, e.pole0[1] * escala];
+      ponerEtiqueta(m, e, c, fs, z);
+      ocupadas.push(rectanguloEtiqueta(c, fs, e.anchoPorPx));
+    });
+
+    sinCabida.forEach(e => {
+      const centroPx = [e.pole0[0] * escala, e.pole0[1] * escala];
+      const radio = Math.max(...e.ringRel0.map(([x, y]) => Math.hypot(x, y))) * escala;
+      const c = colocarCercaDeLaSeccion(centroPx, radio, ETIQUETA.min, e.anchoPorPx, ocupadas, obstaculos, vista);
+      ponerEtiqueta(m, e, c, ETIQUETA.min, z);
+      ocupadas.push(rectanguloEtiqueta(c, ETIQUETA.min, e.anchoPorPx));
+    });
+  }
+
+  function ajustarEtiquetas() {
+    if (!etiquetas.length) return;
+    ajustarEtiquetasEn(map, etiquetas, obstaculosVisibles(map.getZoom()), ETIQUETA.max);
+  }
+
+  function fuentesDelDistrito(dist) {
+    const fuentes = [];
+    if ((dist === '11' || dist === 'TODOS') && datosDistrito11GeoJSON) fuentes.push(datosDistrito11GeoJSON);
+    if ((dist === '15' || dist === 'TODOS') && datosDistrito15GeoJSON) fuentes.push(datosDistrito15GeoJSON);
+    if (!fuentes.length && datosSeccionesGeoJSON) fuentes.push(datosSeccionesGeoJSON);
+    return fuentes;
+  }
+
+  function limitesDelDistrito(dist) {
+    let limites = null;
+    fuentesDelDistrito(dist).forEach(g => {
+      const b = L.geoJSON(g).getBounds();
+      limites = limites ? limites.extend(b) : b;
+    });
+    return limites;
+  }
+
+  function anillosDelDistrito(dist) {
+    const anillos = [];
+    fuentesDelDistrito(dist).forEach(g => {
+      const feats = g.type === 'FeatureCollection' ? g.features : [g];
+      feats.forEach(f => {
+        if (!f.geometry) return;
+        const poligonos = f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [f.geometry.coordinates];
+        poligonos.forEach(p => p.forEach(ring => anillos.push(ring.map(([lng, lat]) => [lat, lng]))));
+      });
+    });
+    return anillos;
+  }
+
+  function ponerVelo(m, dist) {
+    const anillos = anillosDelDistrito(dist);
+    if (!anillos.length) return null;
+    const mundo = [[-85, -180], [-85, 180], [85, 180], [85, -180]];
+    return L.polygon([mundo, ...anillos], {
+      pane: 'velo', stroke: false, fillColor: '#ffffff', fillOpacity: VELO_FUERA,
+      fillRule: 'evenodd', interactive: false
+    }).addTo(m);
+  }
+
+  function quitarVelo() {
+    if (velo) { velo.remove(); velo = null; }
+  }
+
+  function anilloChocaConRect(anillo, r) {
+    for (const [x, y] of anillo) {
+      if (x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2) return true;
+    }
+    const esquinas = [[r.x1, r.y1], [r.x2, r.y1], [r.x2, r.y2], [r.x1, r.y2]];
+    for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+      for (let k = 0; k < 4; k++) {
+        if (segmentosSeCruzan(anillo[j], anillo[i], esquinas[k], esquinas[(k + 1) % 4])) return true;
+      }
+    }
+    return distanciaAlBorde(r.x1, r.y1, anillo) > 0;
+  }
+
+  function tarjetaChocaConDistrito(r, z) {
+    const s = Math.pow(2, z);
+    return etiquetas.some(e => anilloChocaConRect(
+      e.ringRel0.map(([x, y]) => [(x + e.pole0[0]) * s, (y + e.pole0[1]) * s]), r
+    ));
+  }
+
+  function encuadrarDistrito(limites) {
+    const tarjeta = document.getElementById('resumen-mapa');
+    const tw = tarjeta.offsetWidth, th = tarjeta.offsetHeight;
+    const W = map.getSize().x, H = map.getSize().y;
+    const centro = limites.getCenter();
+    const zMax = map.getBoundsZoom(limites, false, L.point(40, 40));
+
+    for (let z = zMax, i = 0; z - i * 0.25 >= 8; z -= 0.25, i++) {
+      map.setView(centro, z, { animate: false });
+      const o = map.project(centro, z);
+      const x1 = o.x - W / 2 + 8, y1 = o.y - H / 2 + 8;
+      const r = { x1: x1 - 4, y1: y1 - 4, x2: x1 + tw + 4, y2: y1 + th + 4 };
+      if (!tarjetaChocaConDistrito(r, z)) return;
+    }
+    map.setView(centro, zMax, { animate: false });
+  }
+
+  function registrarCargaTeselas(capa) {
+    return new Promise(resolve => {
+      let empezo = false, t1, t2;
+      const alEmpezar = () => { empezo = true; };
+      const fin = () => {
+        capa.off('tileloadstart', alEmpezar);
+        capa.off('load', fin);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        setTimeout(resolve, 250);
+      };
+      capa.on('tileloadstart', alEmpezar);
+      capa.on('load', fin);
+      t1 = setTimeout(() => { if (!empezo) fin(); }, 800);
+      t2 = setTimeout(fin, 8000);
+    });
+  }
+
+  function prepararImpresion() {
+    if (impresionPreparada) return;
+    impresionPreparada = true;
+    vistaAntesDeImprimir = { centro: map.getCenter(), zoom: map.getZoom() };
+    cargasPendientes = [registrarCargaTeselas(capaBase)];
+
+    const dist = document.getElementById('select-distrito').value;
+    const textoDistrito = dist === 'TODOS' ? 'Distritos Locales 11 y 15' : 'Distrito Local ' + dist;
+    const fecha = new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' });
+
+    document.getElementById('titulo-mapa-distrito').textContent = textoDistrito;
+    document.getElementById('titulo-mapa-fecha').textContent = fecha;
+    document.getElementById('pdf-distrito-sub').textContent = textoDistrito;
+    document.getElementById('pdf-fecha').textContent = fecha;
+
+    ['meta', 'recabadas', 'faltantes'].forEach(k => {
+      document.getElementById('pdf-kpi-' + k).textContent = document.getElementById('kpi-' + k).textContent;
+    });
+    document.getElementById('pdf-kpi-barra').style.width = document.getElementById('kpi-barra').style.width;
+
+    document.getElementById('pdf-agrupado-container').innerHTML =
+      generarTablaAgrupadaPDF('🟢 SECCIONES VERDES (10 o más firmas)', 'bg-green-600', window.seccionesVerdes) +
+      generarTablaAgrupadaPDF('🟡 SECCIONES AMARILLAS (De 5 a 9 firmas)', 'bg-yellow-600', window.seccionesAmarillas) +
+      generarTablaAgrupadaPDF('🔴 SECCIONES ROJAS (De 0 a 4 firmas)', 'bg-red-600', window.seccionesRojas);
+    document.getElementById('reporte-impresion').classList.remove('hidden');
+
+    document.body.classList.add('modo-impresion');
+    map.invalidateSize({ animate: false });
+
+    const limites = limitesDelDistrito(dist);
+    if (limites && limites.isValid()) {
+      encuadrarDistrito(limites);
+    }
+
+    aplicarEstiloSecciones(RELLENO.impresion, BORDE.impresion);
+    quitarVelo();
+    velo = ponerVelo(map, dist);
+    ajustarEtiquetas();
+  }
+
+  function terminarImpresion() {
+    if (!impresionPreparada) return;
+    impresionPreparada = false;
+    document.body.classList.remove('modo-impresion');
+    document.getElementById('reporte-impresion').classList.add('hidden');
+    cargasPendientes = [];
+
+    quitarVelo();
+    aplicarEstiloSecciones(RELLENO.pantalla, BORDE.pantalla);
+    map.invalidateSize({ animate: false });
+    if (vistaAntesDeImprimir) {
+      map.setView(vistaAntesDeImprimir.centro, vistaAntesDeImprimir.zoom, { animate: false });
+    }
+    vistaAntesDeImprimir = null;
+  }
+
+  function generarTablaAgrupadaPDF(titulo, colorHeader, secciones) {
+    if (!secciones || secciones.length === 0) return '';
+    let filas = secciones.map(s => `
+      <tr class="border-b">
+        <td class="p-1.5 font-bold text-slate-800">${s.seccion}</td>
+        <td class="p-1.5 text-center">${s.meta}</td>
+        <td class="p-1.5 text-center font-semibold text-green-700">${s.recabadas}</td>
+        <td class="p-1.5 text-center font-semibold text-red-600">${s.faltantes}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="mb-4">
+        <div class="px-3 py-1.5 ${colorHeader} text-white font-bold text-xs rounded-t flex justify-between">
+          <span>${titulo}</span>
+          <span>Total: ${secciones.length} secciones</span>
+        </div>
+        <table class="w-full text-left text-xs border border-t-0 border-collapse">
+          <thead class="bg-slate-100 text-slate-700">
+            <tr>
+              <th class="p-1.5">Sección</th>
+              <th class="p-1.5 text-center">Meta</th>
+              <th class="p-1.5 text-center">Recabadas</th>
+              <th class="p-1.5 text-center">Faltantes</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function actualizarVista() {
+    capaContornoDistrito.clearLayers();
+    capaSecciones.clearLayers();
+    capaEtiquetas.clearLayers();
+    etiquetas = [];
+
+    const distritoSeleccionado = document.getElementById('select-distrito').value;
+    const estatusSeleccionado = document.getElementById('select-estatus').value;
+
+    if ((distritoSeleccionado === '11' || distritoSeleccionado === 'TODOS') && datosDistrito11GeoJSON) {
+      L.geoJSON(datosDistrito11GeoJSON, {
+        style: { color: '#002244', weight: 3.5, fillOpacity: 0.03, dashArray: '6, 6' }
+      }).addTo(capaContornoDistrito);
+    }
+
+    if ((distritoSeleccionado === '15' || distritoSeleccionado === 'TODOS') && datosDistrito15GeoJSON) {
+      L.geoJSON(datosDistrito15GeoJSON, {
+        style: { color: '#8b0000', weight: 3.5, fillOpacity: 0.03, dashArray: '6, 6' }
+      }).addTo(capaContornoDistrito);
+    }
+
+    if (!datosSeccionesGeoJSON) return;
+
+    const tbody = document.getElementById('tabla-secciones-body');
+    tbody.innerHTML = '';
+
+    let totalMeta = 0;
+    let totalRecabadas = 0;
+    let totalFaltantes = 0;
+
+    window.seccionesVerdes = [];
+    window.seccionesAmarillas = [];
+    window.seccionesRojas = [];
+
+    const todas = datosSeccionesGeoJSON.type === 'FeatureCollection'
+      ? datosSeccionesGeoJSON.features
+      : [datosSeccionesGeoJSON];
+    seleccionSecciones = todas.filter(f => pasaFiltros(f, distritoSeleccionado, estatusSeleccionado));
+
+    const layerGroup = L.geoJSON({ type: 'FeatureCollection', features: seleccionSecciones }, {
+      style: f => estiloSeccion(f, opacidadRelleno, grosorBorde),
+      onEachFeature: function(feature, layer) {
+        const seccion = feature.properties.SECCION || 'N/A';
+        const valFirmas = obtenerValorAtributo(feature.properties, ["TOTAL DE FIRMAS", "TOTALDEFIRMAS"]);
+
+        let recabadasText = 'N/A';
+        let faltantesText = 'N/A';
+        let metaText = 'N/A';
+        let badgeClass = 'bg-meta-na';
+        let estadoTexto = 'Sin Dato (N/A)';
+
+        if (valFirmas !== null && valFirmas !== undefined && valFirmas !== '') {
+          const recabadas = parseFloat(valFirmas) || 0;
+          const faltantes = Math.max(0, META_POR_SECCION - recabadas);
+
+          totalMeta += META_POR_SECCION;
+          totalRecabadas += recabadas;
+          totalFaltantes += faltantes;
+
+          recabadasText = recabadas;
+          faltantesText = faltantes;
+          metaText = META_POR_SECCION;
+
+          const itemData = { seccion, meta: META_POR_SECCION, recabadas, faltantes };
+
+          if (recabadas >= 10) {
+            badgeClass = 'bg-meta-ok';
+            estadoTexto = 'Completado (10+)';
+            window.seccionesVerdes.push(itemData);
+          } else if (recabadas >= 5) {
+            badgeClass = 'bg-meta-proceso';
+            estadoTexto = 'En Proceso (5-9)';
+            window.seccionesAmarillas.push(itemData);
+          } else if (recabadas > 0) {
+            badgeClass = 'bg-meta-critico';
+            estadoTexto = 'Crítica (1-4)';
+            window.seccionesRojas.push(itemData);
+          } else {
+            badgeClass = 'bg-meta-na';
+            estadoTexto = 'Sin firmas (0)';
+          }
+        }
+
+        layer.bindPopup(`
+          <div class="text-xs p-1">
+            <b class="text-sm text-blue-900">Sección Electoral ${seccion}</b><br>
+            <b>Distrito Local:</b> ${feature.properties.DISTRITO_L || 'N/A'}<br>
+            <b>Meta:</b> ${metaText}<br>
+            <b>Firmas Recabadas:</b> ${recabadasText}<br>
+            <b>Firmas Faltantes:</b> ${faltantesText}<br>
+            <span class="badge-status ${badgeClass} mt-1">${estadoTexto}</span>
+          </div>
+        `);
+
+        if (feature.geometry) {
+          const anillo = anilloPrincipal(feature.geometry);
+          if (anillo.length) {
+            const ring0 = anillo.map(([lng, lat]) => {
+              const p = map.project([lat, lng], 0);
+              return [p.x, p.y];
+            });
+            const pole0 = poloDeInaccesibilidad(ring0);
+            const polo = map.unproject(L.point(pole0[0], pole0[1]), 0);
+
+            const estilo = ESTILO_ETIQUETA[badgeClass] || ESTILO_ETIQUETA['bg-meta-na'];
+            const html = `<span class="etiqueta-seccion" style="background:${estilo.fondo};color:${estilo.texto};border-color:${estilo.borde}">${seccion}</span>`;
+            const marker = L.marker(polo, {
+              icon: L.divIcon({ className: 'etiqueta-wrap', html, iconSize: [0, 0] }),
+              interactive: false,
+              keyboard: false
+            });
+            capaEtiquetas.addLayer(marker);
+            etiquetas.push({
+              texto: String(seccion),
+              html,
+              polo,
+              marker,
+              pole0,
+              ringRel0: ring0.map(([x, y]) => [x - pole0[0], y - pole0[1]]),
+              anchoPorPx: anchoPorPixel(String(seccion))
+            });
+          }
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = 'border-b hover:bg-slate-50 cursor-pointer';
+        tr.innerHTML = `
+          <td class="p-2 font-bold text-blue-900">${seccion}</td>
+          <td class="p-2 text-center">${metaText}</td>
+          <td class="p-2 text-center font-semibold text-green-700">${recabadasText}</td>
+          <td class="p-2 text-center font-semibold text-red-600">${faltantesText}</td>
+          <td class="p-2 text-center"><span class="badge-status ${badgeClass}">${estadoTexto}</span></td>
+        `;
+        tr.onclick = () => map.fitBounds(layer.getBounds(), { padding: [30, 30] });
+        tbody.appendChild(tr);
+      }
+    });
+
+    capaSecciones.addLayer(layerGroup);
+
+    document.getElementById('kpi-meta').textContent = totalMeta;
+    document.getElementById('kpi-recabadas').textContent = totalRecabadas;
+    document.getElementById('kpi-faltantes').textContent = totalFaltantes;
+
+    const porcentaje = totalMeta > 0 ? Math.min(100, Math.round((totalRecabadas / totalMeta) * 100)) : 0;
+    document.getElementById('kpi-barra').style.width = porcentaje + '%';
+
+    if (layerGroup.getLayers().length > 0) {
+      map.fitBounds(layerGroup.getBounds(), { padding: [40, 40] });
+    }
+    ajustarEtiquetas();
+  }
+
+  async function imprimirPantalla() {
+    prepararImpresion();
+    await Promise.all(cargasPendientes);
+    window.print();
+  }
+  window.onload = cargarArchivosRaiz;
+
+  map.zoomControl.setPosition('topright');
+
+  function setDistrito(valor) {
+    document.getElementById('select-distrito').value = valor;
+    document.querySelectorAll('.btn-dist').forEach(b => b.classList.toggle('activo', b.dataset.dist === valor));
+    actualizarVista();
+  }
+
+  const capasOpcionales = { contorno: capaContornoDistrito, secciones: capaSecciones, etiquetas: capaEtiquetas };
+  function toggleCapa(nombre, visible) {
+    if (visible) map.addLayer(capasOpcionales[nombre]);
+    else map.removeLayer(capasOpcionales[nombre]);
+  }
+
+  map.on('mousemove', e => {
+    document.getElementById('coords').textContent =
+      `LAT ${e.latlng.lat.toFixed(5)} · LON ${e.latlng.lng.toFixed(5)}`;
+  });
+
+  if (window.innerWidth <= 720) document.getElementById('sidebar').classList.add('colapsado');
+</script>
+<script src="reportes.js"></script>
+</body>
+</html>
