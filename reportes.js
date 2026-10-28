@@ -1,42 +1,25 @@
-/* Búsqueda por sección y dirección (CDMX), modos de filtro y reportes con vista previa.
+/* Búsqueda por sección y dirección (CDMX), modos de filtro y reporte general por distrito.
    Se carga después del script principal de index.html. */
 
-// ---- Capas complementarias (opcionales) ----
-const ARCHIVO_COLONIAS = 'Colonias.geojson';
-const ARCHIVO_CALLES = 'calles y avenidas.geojson';
-const NOMBRES_COLONIA = ['COLONIA'];
-// Calle = TIPOVIAL + NOMVIAL (ej. "AVENIDA INSURGENTES")
-function nombreCalle(props) {
-  const nom = nombreDe(props, ['NOMVIAL']);
-  const tipo = nombreDe(props, ['TIPOVIAL']);
-  return nom ? (tipo ? tipo + ' ' + nom : nom) : '';
-}
-const CDMX_VIEWBOX = '-99.37,19.6,-98.94,19.04'; // lon izq, lat arriba, lon der, lat abajo
-
-let datosColonias = null;
-let datosCalles = null;
 let modoFiltro = 'distrito';
 let seccionActiva = null;
 let marcadorDir = null;
 let resaltado = null;
 let mapasReporte = [];
 
+const FILL_GRUPO = { verde: '#22c55e', amarillo: '#eab308', rojo: '#ef4444', gris: '#94a3b8' };
+const TITULO_GRUPO = { verde: '#15803d', amarillo: '#a16207', rojo: '#b91c1c', gris: '#475569' };
+const CLASE_GRUPO = { verde: 'bg-meta-ok', amarillo: 'bg-meta-proceso', rojo: 'bg-meta-critico', gris: 'bg-meta-na' };
+const NOMBRE_GRUPO = { verde: 'Completadas (10 o más)', amarillo: 'En proceso (5 a 9)', rojo: 'Críticas (1 a 4)', gris: 'Sin firmas (0) / sin dato' };
+const ORDEN_TABLAS = ['rojo', 'gris', 'verde', 'amarillo'];
+const CENTRO_CDMX = [19.4326, -99.1332];
+const CDMX_VIEWBOX = '-99.37,19.6,-98.94,19.04'; // lon izq, lat arriba, lon der, lat abajo
+
 // ---- Utilidades ----
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const listaFeatures = g => !g ? [] : (g.type === 'FeatureCollection' ? g.features : [g]);
-const anillosExteriores = geom => {
-  if (!geom) return [];
-  const polis = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
-  return polis.map(p => p[0]);
-};
-const lineasDe = geom => !geom ? [] : geom.type === 'LineString' ? [geom.coordinates] : geom.type === 'MultiLineString' ? geom.coordinates : [];
-const nombreDe = (props, claves) => { const v = obtenerValorAtributo(props, claves); return v ? String(v).trim() : ''; };
-function bboxDe(puntos) {
-  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-  for (const [x, y] of puntos) { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }
-  return { x1, y1, x2, y2 };
-}
-const bboxSeSolapan = (a, b) => a.x1 <= b.x2 && b.x1 <= a.x2 && a.y1 <= b.y2 && b.y1 <= a.y2;
+const porSeccion = (a, b) => Number(a.seccion) - Number(b.seccion);
+
 function puntoEnAnillo(x, y, anillo) {
   let dentro = false;
   for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
@@ -45,70 +28,50 @@ function puntoEnAnillo(x, y, anillo) {
   }
   return dentro;
 }
-const contienePunto = (f, lng, lat) => anillosExteriores(f.geometry).some(a => puntoEnAnillo(lng, lat, a));
-
-// ---- Análisis espacial de una sección ----
-function coloniasDeSeccion(sec) {
-  const anillos = anillosExteriores(sec.geometry);
-  const bb = bboxDe(anillos.flat());
-  const res = [];
-  listaFeatures(datosColonias).forEach(c => {
-    const nombre = nombreDe(c.properties, NOMBRES_COLONIA);
-    if (!c.geometry || !nombre) return;
-    const cAn = anillosExteriores(c.geometry);
-    c._bb ??= bboxDe(cAn.flat());
-    if (!bboxSeSolapan(bb, c._bb)) return;
-    const toca = cAn.some(ca => ca.some(([x, y]) => anillos.some(a => puntoEnAnillo(x, y, a))))
-      || anillos.some(a => a.some(([x, y]) => cAn.some(ca => puntoEnAnillo(x, y, ca))));
-    if (toca) res.push({ nombre, feature: c });
-  });
-  return res;
-}
-function callesLimiteDe(sec) {
-  const anillos = anillosExteriores(sec.geometry);
-  const bb = bboxDe(anillos.flat());
-  const res = [];
-  listaFeatures(datosCalles).forEach(c => {
-    const nombre = nombreCalle(c.properties);
-    if (!c.geometry || !nombre) return;
-    const lineas = lineasDe(c.geometry);
-    c._bb ??= bboxDe(lineas.flat());
-    if (!bboxSeSolapan(bb, c._bb)) return;
-    const cruza = lineas.some(linea => linea.some((p, i) => i > 0 &&
-      anillos.some(a => a.some((q, j) => j > 0 && segmentosSeCruzan(linea[i - 1], p, a[j - 1], q)))));
-    if (cruza) res.push({ nombre, feature: c });
-  });
-  return res;
+function contienePunto(f, lng, lat) {
+  const g = f.geometry;
+  if (!g) return false;
+  const polis = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
+  return polis.some(p => puntoEnAnillo(lng, lat, p[0]));
 }
 
+// ---- Datos por sección ----
+const TEXTO_ESTADO = { verde: 'Completada (10+)', amarillo: 'En proceso (5-9)', rojo: 'Crítica (1-4)', gris: 'Sin firmas (0)' };
 function resumenSeccion(f) {
   const p = f.properties;
   const v = obtenerValorAtributo(p, ['TOTAL DE FIRMAS', 'TOTALDEFIRMAS']);
   const sinDato = v === null || v === undefined || v === '';
   const rec = sinDato ? 0 : (parseFloat(v) || 0);
-  let estado = 'Sin dato', color = '#64748b';
-  if (!sinDato && rec >= 10) { estado = 'Completada'; color = '#16a34a'; }
-  else if (!sinDato && rec >= 5) { estado = 'En proceso'; color = '#eab308'; }
-  else if (!sinDato && rec > 0) { estado = 'Crítica'; color = '#dc2626'; }
-  else if (!sinDato) { estado = 'Sin firmas'; color = '#7f1d1d'; }
+  const grupo = sinDato || rec <= 0 ? 'gris' : rec >= 10 ? 'verde' : rec >= 5 ? 'amarillo' : 'rojo';
   return {
-    seccion: p.SECCION ?? 'N/A', distrito: p.DISTRITO_L || 'N/A',
-    sinDato, rec, falta: Math.max(0, META_POR_SECCION - rec), estado, color
+    feature: f, seccion: p.SECCION ?? 'N/A', distrito: String(p.DISTRITO_L ?? '').trim(),
+    sinDato, rec, falta: sinDato ? META_POR_SECCION : Math.max(0, META_POR_SECCION - rec),
+    grupo, estado: sinDato ? 'Sin dato' : TEXTO_ESTADO[grupo]
+  };
+}
+function estadisticas(res) {
+  const cuenta = { verde: 0, amarillo: 0, rojo: 0, gris: 0 };
+  res.forEach(r => cuenta[r.grupo]++);
+  const meta = res.length * META_POR_SECCION;
+  const rec = res.reduce((s, r) => s + (r.sinDato ? 0 : r.rec), 0);
+  return {
+    cuenta, secciones: res.length, meta, rec,
+    falta: res.reduce((s, r) => s + r.falta, 0),
+    avance: meta ? Math.min(100, Math.round((rec / meta) * 100)) : 0
   };
 }
 const htmlResumen = r => `<div class="text-xs"><b>Sección ${esc(r.seccion)}</b><br>
   Distrito: ${esc(r.distrito)}<br>
   Firmas: ${r.sinDato ? 'N/A' : r.rec} · Faltan: ${r.sinDato ? 'N/A' : r.falta}<br>
-  <b style="color:${r.color}">${r.estado}</b></div>`;
+  <b style="color:${TITULO_GRUPO[r.grupo]}">${r.estado}</b></div>`;
 
-// ---- Modos de filtro ----
+// ---- Modos de filtro y búsqueda ----
 function setModo(m) {
   modoFiltro = m;
   document.querySelectorAll('.btn-modo').forEach(b => b.classList.toggle('activo', b.dataset.modo === m));
   ['distrito', 'seccion', 'ubicacion'].forEach(k => document.getElementById('panel-' + k).classList.toggle('oculto', k !== m));
 }
 
-let resaltadoLayer = null;
 function resaltarSeccion(f, ajustar) {
   if (resaltado) resaltado.remove();
   resaltado = L.geoJSON(f, { interactive: false, style: { color: '#7c3aed', weight: 4, fillColor: '#7c3aed', fillOpacity: 0.08, dashArray: '6,4' } }).addTo(map);
@@ -158,100 +121,86 @@ async function buscarDireccion() {
   msg.textContent = sec ? `Ubicado en la sección ${sec.properties.SECCION}.` : 'Ubicado, pero fuera de las secciones.';
 }
 
-// ---- Reportes: hojas ----
-function seccionesParaReporte() {
-  if (modoFiltro !== 'distrito') return seccionActiva ? [seccionActiva] : [];
-  return seleccionSecciones;
-}
-
-const crearHoja = html => {
+// ---- Hojas del reporte ----
+const crearHoja = (clase, html) => {
   const el = document.createElement('section');
-  el.className = 'hoja';
+  el.className = 'hoja ' + clase;
   el.innerHTML = html;
   return el;
 };
+const cabecera = (titulo, sub) => `<header class="cab-hoja"><div><h2>${esc(titulo)}</h2><p>${sub}</p></div>
+  <div class="marca">Meta: ${META_POR_SECCION} firmas por sección</div></header>`;
 
-function hojaSeccion(f, fecha) {
-  const r = resumenSeccion(f);
-  const colonias = coloniasDeSeccion(f);
-  const calles = callesLimiteDe(f);
-  const nombresCol = [...new Set(colonias.map(c => c.nombre))].sort();
-  const nombresCalle = [...new Set(calles.map(c => c.nombre))].sort();
-  const lista = (arr, vacio) => arr.length ? arr.map(n => `<li>${esc(n)}</li>`).join('') : `<li>${vacio}</li>`;
-  const el = crearHoja(`
-    <div class="hoja-mapa-wrap"><div class="hoja-mapa"></div></div>
-    <aside class="hoja-datos">
-      <h2>Sección ${esc(r.seccion)}</h2>
-      <p class="sub">${esc(r.distrito)} · Generado ${fecha}</p>
-      <div class="kpis">
-        <div><span>Meta</span><b>${META_POR_SECCION}</b></div>
-        <div><span>Firmas</span><b style="color:#15803d">${r.sinDato ? 'N/A' : r.rec}</b></div>
-        <div><span>Faltan</span><b style="color:#dc2626">${r.sinDato ? 'N/A' : r.falta}</b></div>
-      </div>
-      <div class="estado" style="background:${r.color}">${r.estado}</div>
-      <h3>Colonias que conforman la sección</h3>
-      <ul>${lista(nombresCol, 'Sin capa de colonias cargada')}</ul>
-      <h3>Entre calles y avenidas (límites)</h3>
-      <ul>${lista(nombresCalle, 'Sin capa de calles cargada')}</ul>
-    </aside>`);
+// Etiqueta de cada sección: el número ocupa el mayor tamaño que cabe dentro de SU polígono
+function etiquetarPoligonos(m, res) {
+  const z = m.getZoom();
+  res.forEach(r => {
+    const anillo = anilloPrincipal(r.feature.geometry);
+    if (!anillo.length) return;
+    const pts = anillo.map(([lng, lat]) => { const p = m.project([lat, lng], z); return [p.x, p.y]; });
+    const pole = poloDeInaccesibilidad(pts);
+    const rel = pts.map(([x, y]) => [x - pole[0], y - pole[1]]);
+    const texto = String(r.seccion);
+    const fs = mayorTamanoQueCabe(rel, anchoPorPixel(texto), ETIQUETA.max) ?? ETIQUETA.min;
+    const est = ESTILO_ETIQUETA[CLASE_GRUPO[r.grupo]];
+    L.marker(m.unproject(L.point(pole[0], pole[1]), z), {
+      interactive: false, keyboard: false,
+      icon: L.divIcon({
+        className: 'etiqueta-wrap', iconSize: [0, 0],
+        html: `<span class="etiqueta-seccion" style="font-size:${fs.toFixed(1)}px;background:${est.fondo};color:${est.texto}">${texto}</span>`
+      })
+    }).addTo(m);
+  });
+}
+
+function hojaMapa(titulo, res, contornos, fecha) {
+  const e = estadisticas(res);
+  const leyenda = ['verde', 'amarillo', 'rojo', 'gris'].map(g =>
+    `<div class="ley-item"><i style="background:${FILL_GRUPO[g]}"></i>${NOMBRE_GRUPO[g]}<b>${e.cuenta[g]}</b></div>`).join('');
+  const el = crearHoja('mapa', cabecera(titulo, `${res.length} secciones · Generado ${fecha}`)
+    + `<div class="cuerpo-mapa"><div class="hoja-mapa"></div><div class="leyenda-hoja"><div class="ley-titulo">Estatus de firmas</div>${leyenda}</div></div>`);
+  const grupoPor = new Map(res.map(r => [r.feature, r.grupo]));
   return {
     el,
     dibujar(m) {
-      const seccion = L.geoJSON(f, { style: { color: '#0f172a', weight: 3, fillColor: r.color, fillOpacity: 0.2 } }).addTo(m);
-      colonias.forEach(c => L.geoJSON(c.feature, { interactive: false, style: { color: '#7c3aed', weight: 1.5, dashArray: '4,4', fillOpacity: 0 } })
-        .addTo(m).eachLayer(l => l.bindTooltip(esc(c.nombre), { permanent: true, direction: 'center', className: 'etq-colonia' })));
-      calles.forEach(c => L.geoJSON(c.feature, { interactive: false, style: { color: '#ea580c', weight: 4 } }).addTo(m));
-      return seccion.getBounds();
-    }
+      const capa = L.geoJSON({ type: 'FeatureCollection', features: res.map(r => r.feature) }, {
+        style: f => ({ color: '#0f172a', weight: 1.5, fillColor: FILL_GRUPO[grupoPor.get(f)], fillOpacity: 0.6 })
+      }).addTo(m);
+      contornos.forEach(g => L.geoJSON(g, { interactive: false, style: { color: '#7f1d1d', weight: 3, fillOpacity: 0, dashArray: '8,6' } }).addTo(m));
+      return capa.getBounds();
+    },
+    etiquetar(m) { etiquetarPoligonos(m, res); }
   };
 }
 
-function hojaDistrito(d, secs, geo, fecha) {
-  const res = secs.map(resumenSeccion).sort((a, b) => Number(a.seccion) - Number(b.seccion));
-  const grupos = { verde: [], amarillo: [], rojo: [], cero: [], gris: [] };
-  let meta = 0, rec = 0, falta = 0;
-  res.forEach(r => {
-    if (r.sinDato) { grupos.gris.push(r); return; }
-    meta += META_POR_SECCION; rec += r.rec; falta += r.falta;
-    if (r.rec >= 10) grupos.verde.push(r);
-    else if (r.rec >= 5) grupos.amarillo.push(r);
-    else if (r.rec > 0) grupos.rojo.push(r);
-    else grupos.cero.push(r);
-  });
-  const pct = meta ? Math.round((rec / meta) * 100) : 0;
-  const bloque = (titulo, arr) => arr.length
-    ? `<h3>${titulo} (${arr.length})</h3><ul>${arr.map(r => `<li>${esc(r.seccion)}${r.sinDato ? '' : ' · ' + r.rec}</li>`).join('')}</ul>`
-    : '';
-  const el = crearHoja(`
-    <div class="hoja-mapa-wrap"><div class="hoja-mapa"></div></div>
-    <aside class="hoja-datos">
-      <h2>Distrito Local ${esc(d)}</h2>
-      <p class="sub">${res.length} secciones · Generado ${fecha}</p>
-      <div class="kpis">
-        <div><span>Meta total</span><b>${meta}</b></div>
-        <div><span>Recabadas</span><b style="color:#15803d">${rec}</b></div>
-        <div><span>Faltantes</span><b style="color:#dc2626">${falta}</b></div>
-      </div>
-      <div class="estado" style="background:#003366">Avance general: ${pct}%</div>
-      <div class="kpis">
-        <div><span>Completadas</span><b style="color:#16a34a">${grupos.verde.length}</b></div>
-        <div><span>En proceso</span><b style="color:#ca8a04">${grupos.amarillo.length}</b></div>
-        <div><span>Críticas</span><b style="color:#dc2626">${grupos.rojo.length}</b></div>
-      </div>
-      ${bloque('Críticas (1 a 4)', grupos.rojo)}
-      ${bloque('Sin firmas (0)', grupos.cero)}
-      ${bloque('En proceso (5 a 9)', grupos.amarillo)}
-      ${bloque('Completadas (10+)', grupos.verde)}
-      ${bloque('Sin dato', grupos.gris)}
-    </aside>`);
-  return {
-    el,
-    dibujar(m) {
-      const cap = L.geoJSON({ type: 'FeatureCollection', features: secs }, { style: f => estiloSeccion(f, 0.45, 0.8) }).addTo(m);
-      if (geo) L.geoJSON(geo, { interactive: false, style: { color: '#8b0000', weight: 3, fillOpacity: 0, dashArray: '6,6' } }).addTo(m);
-      return (geo ? L.geoJSON(geo) : cap).getBounds();
-    }
+function hojaResumen(distritos, fecha) {
+  const filas = distritos.map(d => ({ nombre: `Distrito Local ${d.id}`, ...estadisticas(d.res) }));
+  if (distritos.length > 1) filas.push({ nombre: 'Total', total: true, ...estadisticas(distritos.flatMap(d => d.res)) });
+  const cuerpo = filas.map(f => `<tr class="${f.total ? 'total' : ''}"><td>${f.nombre}</td>
+      <td class="num">${f.secciones}</td><td class="num">${f.meta}</td><td class="num">${f.rec}</td><td class="num">${f.falta}</td>
+      <td class="num">${f.avance}%</td><td class="num">${f.cuenta.verde}</td><td class="num">${f.cuenta.amarillo}</td>
+      <td class="num">${f.cuenta.rojo}</td><td class="num">${f.cuenta.gris}</td></tr>`).join('');
+  return { el: crearHoja('tabla', `${cabecera('Resumen general por distrito', 'Generado ' + fecha)}
+    <div class="tabla-cuerpo"><table class="tabla-resumen"><thead><tr><th>Distrito</th><th class="num">Secciones</th><th class="num">Meta</th>
+    <th class="num">Recabadas</th><th class="num">Faltantes</th><th class="num">Avance</th><th class="num">Completadas</th>
+    <th class="num">En proceso</th><th class="num">Críticas</th><th class="num">Sin firmas</th></tr></thead><tbody>${cuerpo}</tbody></table>
+    <p class="nota">Completadas: 10 o más firmas · En proceso: 5 a 9 · Críticas: 1 a 4 · Sin firmas: 0 o sin dato. La meta cuenta todas las secciones.</p></div>`) };
+}
+
+function hojaTablas(titulo, res, fecha) {
+  const e = estadisticas(res);
+  const bloque = g => {
+    const del = res.filter(r => r.grupo === g).sort(porSeccion);
+    const filas = del.map((r, i) => `<tr class="${i % 2 ? 'par' : ''}"><td>${esc(r.seccion)}</td>
+      <td class="num">${r.sinDato ? 'Sin dato' : r.rec}</td><td class="num">${r.sinDato ? '—' : r.falta}</td></tr>`).join('');
+    return `<div class="bloque"><div class="titulo-bloque" style="background:${TITULO_GRUPO[g]}"><span>${NOMBRE_GRUPO[g]}</span><b>${del.length}</b></div>
+      <table><thead><tr><th>Sección</th><th class="num">Firmas</th><th class="num">Faltan</th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="3" class="vacio">Sin secciones en este grupo</td></tr>'}</tbody></table></div>`;
   };
+  const tarjetas = [['Secciones', e.secciones], ['Meta total', e.meta], ['Recabadas', e.rec], ['Faltantes', e.falta], ['Avance', e.avance + '%']]
+    .map(([k, v]) => `<div class="tarjeta"><span>${k}</span><b>${v}</b></div>`).join('');
+  return { el: crearHoja('tabla', `${cabecera(titulo, 'Detalle por sección · Generado ' + fecha)}
+    <div class="tabla-cuerpo"><div class="tarjetas">${tarjetas}</div><div class="grid-grupos">${ORDEN_TABLAS.map(bloque).join('')}</div></div>`) };
 }
 
 // ---- Vista previa e impresión ----
@@ -268,13 +217,11 @@ function crearVistaPrevia() {
     <div id="hojas-cuerpo"></div>`;
   document.body.appendChild(o);
 }
-
 function limpiarVistaPrevia() {
   mapasReporte.forEach(m => m.remove());
   mapasReporte = [];
   document.getElementById('hojas-cuerpo').innerHTML = '';
 }
-
 function cerrarVistaPrevia() {
   limpiarVistaPrevia();
   document.getElementById('hojas').classList.remove('abierto');
@@ -284,54 +231,43 @@ async function abrirVistaPrevia(hojas) {
   crearVistaPrevia();
   limpiarVistaPrevia();
   const cuerpo = document.getElementById('hojas-cuerpo');
-  const estado = document.getElementById('hojas-estado');
   hojas.forEach(h => cuerpo.appendChild(h.el));
   document.getElementById('hojas').classList.add('abierto');
-  const n = hojas.length;
-  estado.textContent = `(${n} hoja${n === 1 ? '' : 's'}, preparando mapas…)`;
-  const cargas = hojas.map(h => {
-    const m = L.map(h.el.querySelector('.hoja-mapa'), { zoomControl: false, zoomSnap: 0.25, zoomAnimation: false, fadeAnimation: false });
+  const estado = document.getElementById('hojas-estado');
+  estado.textContent = '(preparando mapas…)';
+  const cargas = hojas.filter(h => h.dibujar).map(h => {
+    const m = L.map(h.el.querySelector('.hoja-mapa'), { zoomControl: false, zoomSnap: 0.1, zoomAnimation: false, fadeAnimation: false });
     mapasReporte.push(m);
     const b = h.dibujar(m);
-    if (b.isValid()) m.fitBounds(b, { padding: [24, 24], animate: false });
-    else m.setView([19.4326, -99.1332], 11, { animate: false });
+    if (b.isValid()) m.fitBounds(b, { padding: [30, 30], animate: false });
+    else m.setView(CENTRO_CDMX, 11, { animate: false });
+    h.etiquetar(m);
     return registrarCargaTeselas(L.tileLayer(URL_TELAS, { attribution: ATRIBUCION, maxZoom: 19 }).addTo(m));
   });
   await Promise.all(cargas);
-  estado.textContent = `(${n} hoja${n === 1 ? '' : 's'} listas)`;
+  estado.textContent = `(${hojas.length} hojas listas)`;
 }
 
-async function generarReporte(tipo) {
+async function generarReporte() {
   if (!datosSeccionesGeoJSON) { alert('Todavía no se cargan las secciones.'); return; }
   const fecha = new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' });
-  let hojas;
-  if (tipo === 'seccion') {
-    const lista = seccionesParaReporte();
-    if (!lista.length) {
-      alert(modoFiltro === 'distrito' ? 'No hay secciones con este filtro.' : 'Primero busca una sección o una dirección.');
-      return;
-    }
-    hojas = lista.map(f => hojaSeccion(f, fecha));
-  } else {
-    const sel = document.getElementById('select-distrito').value;
-    const geos = { '11': datosDistrito11GeoJSON, '15': datosDistrito15GeoJSON };
-    hojas = ['11', '15'].filter(d => sel === 'TODOS' || sel === d).map(d =>
-      hojaDistrito(d, listaFeatures(datosSeccionesGeoJSON).filter(f => String(f.properties.DISTRITO_L || '').trim() === d), geos[d], fecha));
+  const sel = document.getElementById('select-distrito').value;
+  const todas = listaFeatures(datosSeccionesGeoJSON);
+  const distritos = [{ id: '11', geo: datosDistrito11GeoJSON }, { id: '15', geo: datosDistrito15GeoJSON }]
+    .filter(d => sel === 'TODOS' || sel === d.id)
+    .map(d => ({ ...d, res: todas.filter(f => String(f.properties.DISTRITO_L || '').trim() === d.id).map(resumenSeccion).sort(porSeccion) }));
+  const hojas = [];
+  if (distritos.length > 1) {
+    hojas.push(hojaMapa('Vista general · Distritos Locales 11 y 15', distritos.flatMap(d => d.res), distritos.map(d => d.geo).filter(Boolean), fecha));
   }
+  distritos.forEach(d => hojas.push(hojaMapa(`Distrito Local ${d.id}`, d.res, [d.geo].filter(Boolean), fecha)));
+  hojas.push(hojaResumen(distritos, fecha));
+  distritos.forEach(d => hojas.push(hojaTablas(`Distrito Local ${d.id}`, d.res, fecha)));
   await abrirVistaPrevia(hojas);
 }
 
 // ---- Arranque ----
-async function leerGeojson(archivo) {
-  try {
-    const r = await fetch(archivo);
-    return r.ok ? await r.json() : null;
-  } catch (e) { return null; }
-}
-
-window.addEventListener('load', async () => {
-  datosColonias = await leerGeojson(ARCHIVO_COLONIAS);
-  datosCalles = await leerGeojson(ARCHIVO_CALLES);
+window.addEventListener('load', () => {
   ['input-seccion', 'input-calle', 'input-numero', 'input-colonia'].forEach(id =>
     document.getElementById(id).addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
