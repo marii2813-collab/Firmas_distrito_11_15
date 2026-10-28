@@ -269,8 +269,8 @@ function hojasMapasPorSeccion(grupo, distritos, fecha) {
       : [['Meta', META_POR_SECCION], ['Recabadas', r.rec], ['Faltantes', r.falta], ['Avance', Math.min(100, Math.round((r.rec / META_POR_SECCION) * 100)) + '%']];
     const tarjetas = datos.map(([k, v]) => `<div class="tarjeta"><span>${k}</span><b>${v}</b></div>`).join('');
     const el = crearHoja('secciones', `${cabecera(`Sección ${r.seccion} · Distrito Local ${r.distrito}`, `${r.estado} · ${NOMBRE_GRUPO[grupo]} · ${n + 1} de ${lista.length} · Generado ${fecha}`)}
-      <div class="mapa-seccion-grande"></div>
-      <div class="tarjetas-seccion">${tarjetas}</div>`);
+      <div class="mapa-seccion-grande" style="position:relative;flex:1;min-height:0;height:560px;margin:12px 22px 0;border:1px solid #dbe3ec;border-radius:8px;overflow:hidden"></div>
+      <div class="tarjetas-seccion" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 22px 14px">${tarjetas}</div>`);
     const contenedor = el.querySelector('.mapa-seccion-grande');
     return { el, dibujos: [{ contenedor, dibujar: m => dibujarSeccion(m, r), etiquetar: m => etiquetarPoligonos(m, [r]) }] };
   });
@@ -311,13 +311,18 @@ async function abrirVistaPrevia(hojas) {
   const dibujos = hojas.flatMap(h => h.dibujos || (h.dibujar
     ? [{ contenedor: h.el.querySelector('.hoja-mapa'), dibujar: h.dibujar, etiquetar: h.etiquetar }] : []));
   const cargas = dibujos.map(h => {
-    const m = L.map(h.contenedor, { zoomControl: false, zoomSnap: 0.1, zoomAnimation: false, fadeAnimation: false });
-    mapasReporte.push(m);
-    const b = h.dibujar(m);
-    if (b.isValid()) m.fitBounds(b, { padding: [30, 30], animate: false });
-    else m.setView(CENTRO_CDMX, 11, { animate: false });
-    h.etiquetar(m);
-    return registrarCargaTeselas(L.tileLayer(URL_TELAS, { attribution: ATRIBUCION, maxZoom: 19 }).addTo(m));
+    try {
+      const m = L.map(h.contenedor, { zoomControl: false, zoomSnap: 0.1, zoomAnimation: false, fadeAnimation: false });
+      mapasReporte.push(m);
+      const b = h.dibujar(m);
+      if (b.isValid()) m.fitBounds(b, { padding: [30, 30], animate: false });
+      else m.setView(CENTRO_CDMX, 11, { animate: false });
+      h.etiquetar(m);
+      return registrarCargaTeselas(L.tileLayer(URL_TELAS, { attribution: ATRIBUCION, maxZoom: 19 }).addTo(m));
+    } catch (err) {
+      console.error('No se pudo dibujar un mapa del reporte:', err);
+      return Promise.resolve();
+    }
   });
   await Promise.all(cargas);
   estado.textContent = `(${hojas.length} hojas listas)`;
