@@ -131,23 +131,27 @@ const crearHoja = (clase, html) => {
 const cabecera = (titulo, sub) => `<header class="cab-hoja"><div><h2>${esc(titulo)}</h2><p>${sub}</p></div>
   <div class="marca">Meta: ${META_POR_SECCION} firmas por sección</div></header>`;
 
-// Etiqueta de cada sección: el número ocupa el mayor tamaño que cabe dentro de SU polígono
+// Etiquetas de sección: tamaño común, reducido solo donde no cabe dentro de su polígono
 function etiquetarPoligonos(m, res) {
   const z = m.getZoom();
-  res.forEach(r => {
+  const datos = res.map(r => {
     const anillo = anilloPrincipal(r.feature.geometry);
-    if (!anillo.length) return;
+    if (!anillo.length) return null;
     const pts = anillo.map(([lng, lat]) => { const p = m.project([lat, lng], z); return [p.x, p.y]; });
     const pole = poloDeInaccesibilidad(pts);
     const rel = pts.map(([x, y]) => [x - pole[0], y - pole[1]]);
     const texto = String(r.seccion);
-    const fs = mayorTamanoQueCabe(rel, anchoPorPixel(texto), ETIQUETA.max) ?? ETIQUETA.min;
-    const est = ESTILO_ETIQUETA[CLASE_GRUPO[r.grupo]];
-    L.marker(m.unproject(L.point(pole[0], pole[1]), z), {
+    return { r, pole, texto, medida: mayorTamanoQueCabe(rel, anchoPorPixel(texto), ETIQUETA.max) };
+  }).filter(Boolean);
+  const uniforme = tamanoUniforme(datos.map(d => d.medida), ETIQUETA.max);
+  datos.forEach(d => {
+    const fs = d.medida === null ? ETIQUETA.min : Math.min(uniforme, d.medida);
+    const est = ESTILO_ETIQUETA[CLASE_GRUPO[d.r.grupo]];
+    L.marker(m.unproject(L.point(d.pole[0], d.pole[1]), z), {
       interactive: false, keyboard: false,
       icon: L.divIcon({
         className: 'etiqueta-wrap', iconSize: [0, 0],
-        html: `<span class="etiqueta-seccion" style="font-size:${fs.toFixed(1)}px;background:${est.fondo};color:${est.texto}">${texto}</span>`
+        html: `<span class="etiqueta-seccion" style="font-size:${fs.toFixed(1)}px;background:${est.fondo};color:${est.texto}">${d.texto}</span>`
       })
     }).addTo(m);
   });
@@ -158,7 +162,7 @@ function hojaMapa(titulo, res, contornos, fecha) {
   const leyenda = ['verde', 'amarillo', 'rojo', 'gris'].map(g =>
     `<span class="ley"><i style="background:${FILL_GRUPO[g]}"></i>${NOMBRE_GRUPO[g]} <b>${e.cuenta[g]}</b></span>`).join('');
   const el = crearHoja('mapa', cabecera(titulo, `${res.length} secciones · Generado ${fecha}`)
-    + `<div class="barra-leyenda">${leyenda}</div><div class="cuerpo-mapa"><div class="hoja-mapa"></div></div>`);
+    + `<div class="cuerpo-mapa"><div class="hoja-mapa"></div><div class="leyenda-hoja">${leyenda}</div></div>`);
   const grupoPor = new Map(res.map(r => [r.feature, r.grupo]));
   return {
     el,
@@ -188,14 +192,20 @@ function hojaResumen(distritos, fecha) {
 }
 
 function hojaTablas(titulo, res, fecha) {
+  const TITULO_BLOQUE = {
+    rojo: '🔴 Críticas (1 a 4 firmas)',
+    gris: '⚪ Sin firmas (0) / sin dato',
+    verde: '🟢 Completadas (10 o más firmas)',
+    amarillo: '🟡 En proceso (5 a 9 firmas)'
+  };
   const e = estadisticas(res);
   const bloque = g => {
     const del = res.filter(r => r.grupo === g).sort(porSeccion);
-    const filas = del.map((r, i) => `<tr class="${i % 2 ? 'par' : ''}"><td>${esc(r.seccion)}</td>
+    const filas = del.map(r => `<tr><td class="sec">${esc(r.seccion)}</td><td class="num">${META_POR_SECCION}</td>
       <td class="num">${r.sinDato ? 'Sin dato' : r.rec}</td><td class="num">${r.sinDato ? '—' : r.falta}</td></tr>`).join('');
-    return `<div class="bloque"><div class="titulo-bloque" style="background:${TITULO_GRUPO[g]}"><span>${NOMBRE_GRUPO[g]}</span><b>${del.length}</b></div>
-      <table><thead><tr><th>Sección</th><th class="num">Firmas</th><th class="num">Faltan</th></tr></thead>
-      <tbody>${filas || '<tr><td colspan="3" class="vacio">Sin secciones en este grupo</td></tr>'}</tbody></table></div>`;
+    return `<div class="bloque"><div class="titulo-bloque" style="background:${TITULO_GRUPO[g]}"><span>${TITULO_BLOQUE[g]}</span><span>Total: ${del.length} secciones</span></div>
+      <table><thead><tr><th>Sección</th><th class="num">Meta</th><th class="num">Recabadas</th><th class="num">Faltantes</th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="4" class="vacio">Sin secciones en este grupo</td></tr>'}</tbody></table></div>`;
   };
   const tarjetas = [['Secciones', e.secciones], ['Meta total', e.meta], ['Recabadas', e.rec], ['Faltantes', e.falta], ['Avance', e.avance + '%']]
     .map(([k, v]) => `<div class="tarjeta"><span>${k}</span><b>${v}</b></div>`).join('');
