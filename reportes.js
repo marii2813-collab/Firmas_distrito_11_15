@@ -253,6 +253,42 @@ function hojaClasificacion(grupo, distritos, fecha) {
     <div class="tabla-cuerpo"><div class="tarjetas">${tarjetas}</div><div class="grid-grupos">${detalle}</div></div>`) };
 }
 
+// ---- Mapas por sección: una tarjeta con su mapa por cada sección de los estatus marcados (6 por hoja) ----
+const SECCIONES_POR_HOJA = 6;
+
+function dibujarSeccion(m, r) {
+  return L.geoJSON(r.feature, {
+    style: { color: '#0f172a', weight: 2, fillColor: FILL_GRUPO[r.grupo], fillOpacity: 0.6 }
+  }).addTo(m).getBounds();
+}
+
+const tarjetaSeccion = r => `<div class="tarjeta-seccion">
+  <div class="encabezado-seccion"><b>Sección ${esc(r.seccion)} · Distrito ${esc(r.distrito)}</b><span class="badge-status ${CLASE_GRUPO[r.grupo]}">${r.estado}</span></div>
+  <div class="mapa-seccion"></div>
+  <div class="pie-seccion"><span>Meta ${META_POR_SECCION}</span><span>Recabadas ${r.sinDato ? 'Sin dato' : r.rec}</span><span>Faltan ${r.sinDato ? '—' : r.falta}</span></div>
+</div>`;
+
+function hojasMapasPorSeccion(grupo, distritos, fecha) {
+  const lista = distritos.flatMap(d => d.res).filter(r => r.grupo === grupo)
+    .sort((a, b) => Number(a.distrito) - Number(b.distrito) || porSeccion(a, b));
+  if (!lista.length) return [];
+  const ambito = distritos.length > 1
+    ? 'Distritos Locales ' + distritos.map(d => d.id).join(' y ')
+    : 'Distrito Local ' + distritos[0].id;
+  const paginas = [];
+  for (let i = 0; i < lista.length; i += SECCIONES_POR_HOJA) paginas.push(lista.slice(i, i + SECCIONES_POR_HOJA));
+  return paginas.map((pagina, n) => {
+    const el = crearHoja('secciones', `${cabecera('Mapas por sección: ' + NOMBRE_GRUPO[grupo], `${ambito} · Hoja ${n + 1} de ${paginas.length} · Generado ${fecha}`)}
+      <div class="grid-secciones">${pagina.map(tarjetaSeccion).join('')}</div>`);
+    const dibujos = [...el.querySelectorAll('.mapa-seccion')].map((contenedor, k) => ({
+      contenedor,
+      dibujar: m => dibujarSeccion(m, pagina[k]),
+      etiquetar: m => etiquetarPoligonos(m, [pagina[k]])
+    }));
+    return { el, dibujos };
+  });
+}
+
 // ---- Vista previa e impresión ----
 function crearVistaPrevia() {
   if (document.getElementById('hojas')) return;
@@ -285,8 +321,10 @@ async function abrirVistaPrevia(hojas) {
   document.getElementById('hojas').classList.add('abierto');
   const estado = document.getElementById('hojas-estado');
   estado.textContent = '(preparando mapas…)';
-  const cargas = hojas.filter(h => h.dibujar).map(h => {
-    const m = L.map(h.el.querySelector('.hoja-mapa'), { zoomControl: false, zoomSnap: 0.1, zoomAnimation: false, fadeAnimation: false });
+  const dibujos = hojas.flatMap(h => h.dibujos || (h.dibujar
+    ? [{ contenedor: h.el.querySelector('.hoja-mapa'), dibujar: h.dibujar, etiquetar: h.etiquetar }] : []));
+  const cargas = dibujos.map(h => {
+    const m = L.map(h.contenedor, { zoomControl: false, zoomSnap: 0.1, zoomAnimation: false, fadeAnimation: false });
     mapasReporte.push(m);
     const b = h.dibujar(m);
     if (b.isValid()) m.fitBounds(b, { padding: [30, 30], animate: false });
@@ -298,7 +336,7 @@ async function abrirVistaPrevia(hojas) {
   estado.textContent = `(${hojas.length} hojas listas)`;
 }
  
-async function generarReporte(grupos = GRUPOS_TODOS) {
+async function generarReporte(grupos = GRUPOS_TODOS, conMapasSeccion = false) {
   if (!datosSeccionesGeoJSON) { alert('Todavía no se cargan las secciones.'); return; }
   const fecha = new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' });
   const sel = document.getElementById('select-distrito').value;
@@ -325,6 +363,9 @@ async function generarReporte(grupos = GRUPOS_TODOS) {
   hojas.push(hojaResumen(distritos, fecha, grupos));
   distritos.forEach(d => hojas.push(hojaTablas(`Distrito Local ${d.id}`, d.res, fecha, grupos)));
   ORDEN_TABLAS.filter(g => grupos.includes(g)).forEach(g => hojas.push(hojaClasificacion(g, distritos, fecha)));
+  if (conMapasSeccion) {
+    ORDEN_TABLAS.filter(g => grupos.includes(g)).forEach(g => hojas.push(...hojasMapasPorSeccion(g, distritos, fecha)));
+  }
   await abrirVistaPrevia(hojas);
 }
  
@@ -332,7 +373,7 @@ async function generarReporte(grupos = GRUPOS_TODOS) {
 async function generarReporteSeleccion() {
   const grupos = GRUPOS_TODOS.filter(g => document.getElementById('chk-' + g).checked);
   if (!grupos.length) { alert('Marca al menos un estatus: verdes, amarillas, rojas o grises.'); return; }
-  await generarReporte(grupos);
+  await generarReporte(grupos, true);
 }
  
 // ---- Arranque ----
