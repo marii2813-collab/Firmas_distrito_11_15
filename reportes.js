@@ -131,7 +131,6 @@ const crearHoja = (clase, html) => {
 const cabecera = (titulo, sub) => `<header class="cab-hoja"><div><h2>${esc(titulo)}</h2><p>${sub}</p></div>
   <div class="marca">Meta: ${META_POR_SECCION} firmas por sección</div></header>`;
 
-// Etiquetas de sección: mismo algoritmo que el mapa interactivo (tamaño común, sin encimarse)
 function obstaculosHoja(m) {
   const hoja = m.getContainer().closest('.hoja');
   const leyenda = hoja && hoja.querySelector('.leyenda-hoja');
