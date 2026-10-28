@@ -1,25 +1,29 @@
 /* Búsqueda por sección y dirección (CDMX), modos de filtro y reporte general por distrito.
    Se carga después del script principal de index.html. */
-
+ 
 let modoFiltro = 'distrito';
 let seccionActiva = null;
 let marcadorDir = null;
 let resaltado = null;
 let mapasReporte = [];
-
+ 
 const FILL_GRUPO = { verde: '#22c55e', amarillo: '#eab308', rojo: '#ef4444', gris: '#94a3b8' };
 const TITULO_GRUPO = { verde: '#15803d', amarillo: '#a16207', rojo: '#b91c1c', gris: '#475569' };
 const CLASE_GRUPO = { verde: 'bg-meta-ok', amarillo: 'bg-meta-proceso', rojo: 'bg-meta-critico', gris: 'bg-meta-na' };
 const NOMBRE_GRUPO = { verde: 'Completadas (10 o más)', amarillo: 'En proceso (5 a 9)', rojo: 'Críticas (1 a 4)', gris: 'Sin firmas (0) / sin dato' };
 const ORDEN_TABLAS = ['rojo', 'gris', 'verde', 'amarillo'];
+const GRUPOS_TODOS = ['verde', 'amarillo', 'rojo', 'gris'];
+const NOMBRE_CORTO = { verde: 'Verdes', amarillo: 'Amarillas', rojo: 'Rojas', gris: 'Grises' };
+const COLUMNA_GRUPO = { verde: 'Completadas', amarillo: 'En proceso', rojo: 'Críticas', gris: 'Sin firmas' };
+const RANGO_GRUPO = { verde: 'Completadas: 10 o más firmas', amarillo: 'En proceso: 5 a 9', rojo: 'Críticas: 1 a 4', gris: 'Sin firmas: 0 o sin dato' };
 const CENTRO_CDMX = [19.4326, -99.1332];
 const CDMX_VIEWBOX = '-99.37,19.6,-98.94,19.04'; // lon izq, lat arriba, lon der, lat abajo
-
+ 
 // ---- Utilidades ----
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const listaFeatures = g => !g ? [] : (g.type === 'FeatureCollection' ? g.features : [g]);
 const porSeccion = (a, b) => Number(a.seccion) - Number(b.seccion);
-
+ 
 function puntoEnAnillo(x, y, anillo) {
   let dentro = false;
   for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
@@ -34,7 +38,7 @@ function contienePunto(f, lng, lat) {
   const polis = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
   return polis.some(p => puntoEnAnillo(lng, lat, p[0]));
 }
-
+ 
 // ---- Datos por sección ----
 const TEXTO_ESTADO = { verde: 'Completada (10+)', amarillo: 'En proceso (5-9)', rojo: 'Crítica (1-4)', gris: 'Sin firmas (0)' };
 function resumenSeccion(f) {
@@ -64,14 +68,14 @@ const htmlResumen = r => `<div class="text-xs"><b>Sección ${esc(r.seccion)}</b>
   Distrito: ${esc(r.distrito)}<br>
   Firmas: ${r.sinDato ? 'N/A' : r.rec} · Faltan: ${r.sinDato ? 'N/A' : r.falta}<br>
   <b style="color:${TITULO_GRUPO[r.grupo]}">${r.estado}</b></div>`;
-
+ 
 // ---- Modos de filtro y búsqueda ----
 function setModo(m) {
   modoFiltro = m;
   document.querySelectorAll('.btn-modo').forEach(b => b.classList.toggle('activo', b.dataset.modo === m));
   ['distrito', 'seccion', 'ubicacion'].forEach(k => document.getElementById('panel-' + k).classList.toggle('oculto', k !== m));
 }
-
+ 
 function resaltarSeccion(f, ajustar) {
   if (resaltado) resaltado.remove();
   resaltado = L.geoJSON(f, { interactive: false, style: { color: '#7c3aed', weight: 4, fillColor: '#7c3aed', fillOpacity: 0.08, dashArray: '6,4' } }).addTo(map);
@@ -79,7 +83,7 @@ function resaltarSeccion(f, ajustar) {
   if (ajustar) map.fitBounds(b, { padding: [40, 40] });
   return b;
 }
-
+ 
 function buscarSeccion() {
   const num = document.getElementById('input-seccion').value.trim();
   const msg = document.getElementById('msg-seccion');
@@ -90,7 +94,7 @@ function buscarSeccion() {
   const b = resaltarSeccion(sec, true);
   L.popup().setLatLng(b.getCenter()).setContent(htmlResumen(resumenSeccion(sec))).openOn(map);
 }
-
+ 
 async function buscarDireccion() {
   const calle = document.getElementById('input-calle').value.trim();
   const numero = document.getElementById('input-numero').value.trim();
@@ -120,7 +124,7 @@ async function buscarDireccion() {
   if (sec) resaltarSeccion(sec, false);
   msg.textContent = sec ? `Ubicado en la sección ${sec.properties.SECCION}.` : 'Ubicado, pero fuera de las secciones.';
 }
-
+ 
 // ---- Hojas del reporte ----
 const crearHoja = (clase, html) => {
   const el = document.createElement('section');
@@ -130,7 +134,7 @@ const crearHoja = (clase, html) => {
 };
 const cabecera = (titulo, sub) => `<header class="cab-hoja"><div><h2>${esc(titulo)}</h2><p>${sub}</p></div>
   <div class="marca">Meta: ${META_POR_SECCION} firmas por sección</div></header>`;
-
+ 
 function obstaculosHoja(m) {
   const hoja = m.getContainer().closest('.hoja');
   const leyenda = hoja && hoja.querySelector('.leyenda-hoja');
@@ -142,7 +146,7 @@ function obstaculosHoja(m) {
   const b = m.project(m.containerPointToLatLng(L.point(r.right - base.left, r.bottom - base.top)), z);
   return [{ x1: Math.min(a.x, b.x) - 4, y1: Math.min(a.y, b.y) - 4, x2: Math.max(a.x, b.x) + 4, y2: Math.max(a.y, b.y) + 4 }];
 }
-
+ 
 function etiquetarPoligonos(m, res) {
   const registros = [];
   res.forEach(r => {
@@ -163,12 +167,18 @@ function etiquetarPoligonos(m, res) {
   });
   ajustarEtiquetasEn(m, registros, obstaculosHoja(m), ETIQUETA.max);
 }
-
-function hojaMapa(titulo, res, contornos, fecha) {
+ 
+// Texto que indica qué estatus incluye el reporte (vacío si se incluyen todos)
+function etiquetaFiltro(grupos) {
+  if (grupos.length === GRUPOS_TODOS.length) return '';
+  return ' · Filtro: ' + GRUPOS_TODOS.filter(g => grupos.includes(g)).map(g => NOMBRE_CORTO[g]).join(', ');
+}
+ 
+function hojaMapa(titulo, res, contornos, fecha, grupos = GRUPOS_TODOS) {
   const e = estadisticas(res);
-  const leyenda = ['verde', 'amarillo', 'rojo', 'gris'].map(g =>
+  const leyenda = GRUPOS_TODOS.filter(g => grupos.includes(g)).map(g =>
     `<span class="ley"><i style="background:${FILL_GRUPO[g]}"></i>${NOMBRE_GRUPO[g]} <b>${e.cuenta[g]}</b></span>`).join('');
-  const el = crearHoja('mapa', cabecera(titulo, `${res.length} secciones · Generado ${fecha}`)
+  const el = crearHoja('mapa', cabecera(titulo, `${res.length} secciones${etiquetaFiltro(grupos)} · Generado ${fecha}`)
     + `<div class="cuerpo-mapa"><div class="hoja-mapa"></div><div class="leyenda-hoja">${leyenda}</div></div>`);
   const grupoPor = new Map(res.map(r => [r.feature, r.grupo]));
   return {
@@ -183,22 +193,23 @@ function hojaMapa(titulo, res, contornos, fecha) {
     etiquetar(m) { etiquetarPoligonos(m, res); }
   };
 }
-
-function hojaResumen(distritos, fecha) {
+ 
+function hojaResumen(distritos, fecha, grupos = GRUPOS_TODOS) {
+  const orden = GRUPOS_TODOS.filter(g => grupos.includes(g));
   const filas = distritos.map(d => ({ nombre: `Distrito Local ${d.id}`, ...estadisticas(d.res) }));
   if (distritos.length > 1) filas.push({ nombre: 'Total', total: true, ...estadisticas(distritos.flatMap(d => d.res)) });
   const cuerpo = filas.map(f => `<tr class="${f.total ? 'total' : ''}"><td>${f.nombre}</td>
       <td class="num">${f.secciones}</td><td class="num">${f.meta}</td><td class="num">${f.rec}</td><td class="num">${f.falta}</td>
-      <td class="num">${f.avance}%</td><td class="num">${f.cuenta.verde}</td><td class="num">${f.cuenta.amarillo}</td>
-      <td class="num">${f.cuenta.rojo}</td><td class="num">${f.cuenta.gris}</td></tr>`).join('');
+      <td class="num">${f.avance}%</td>${orden.map(g => `<td class="num">${f.cuenta[g]}</td>`).join('')}</tr>`).join('');
+  const encabezados = orden.map(g => `<th class="num">${COLUMNA_GRUPO[g]}</th>`).join('');
+  const alcance = orden.length < GRUPOS_TODOS.length ? 'La meta cuenta solo las secciones de este reporte.' : 'La meta cuenta todas las secciones.';
   return { el: crearHoja('tabla', `${cabecera('Resumen general por distrito', 'Generado ' + fecha)}
     <div class="tabla-cuerpo"><table class="tabla-resumen"><thead><tr><th>Distrito</th><th class="num">Secciones</th><th class="num">Meta</th>
-    <th class="num">Recabadas</th><th class="num">Faltantes</th><th class="num">Avance</th><th class="num">Completadas</th>
-    <th class="num">En proceso</th><th class="num">Críticas</th><th class="num">Sin firmas</th></tr></thead><tbody>${cuerpo}</tbody></table>
-    <p class="nota">Completadas: 10 o más firmas · En proceso: 5 a 9 · Críticas: 1 a 4 · Sin firmas: 0 o sin dato. La meta cuenta todas las secciones.</p></div>`) };
+    <th class="num">Recabadas</th><th class="num">Faltantes</th><th class="num">Avance</th>${encabezados}</tr></thead><tbody>${cuerpo}</tbody></table>
+    <p class="nota">${orden.map(g => RANGO_GRUPO[g]).join(' · ')}. ${alcance}</p></div>`) };
 }
-
-function hojaTablas(titulo, res, fecha) {
+ 
+function hojaTablas(titulo, res, fecha, grupos = GRUPOS_TODOS) {
   const TITULO_BLOQUE = {
     rojo: '🔴 Críticas (1 a 4 firmas)',
     gris: '⚪ Sin firmas (0) / sin dato',
@@ -216,10 +227,10 @@ function hojaTablas(titulo, res, fecha) {
   };
   const tarjetas = [['Secciones', e.secciones], ['Meta total', e.meta], ['Recabadas', e.rec], ['Faltantes', e.falta], ['Avance', e.avance + '%']]
     .map(([k, v]) => `<div class="tarjeta"><span>${k}</span><b>${v}</b></div>`).join('');
-  return { el: crearHoja('tabla', `${cabecera(titulo, 'Detalle por sección · Generado ' + fecha)}
-    <div class="tabla-cuerpo"><div class="tarjetas">${tarjetas}</div><div class="grid-grupos">${ORDEN_TABLAS.map(bloque).join('')}</div></div>`) };
+  return { el: crearHoja('tabla', `${cabecera(titulo, 'Detalle por sección' + etiquetaFiltro(grupos) + ' · Generado ' + fecha)}
+    <div class="tabla-cuerpo"><div class="tarjetas">${tarjetas}</div><div class="grid-grupos">${ORDEN_TABLAS.filter(g => grupos.includes(g)).map(bloque).join('')}</div></div>`) };
 }
-
+ 
 // ---- Vista previa e impresión ----
 function crearVistaPrevia() {
   if (document.getElementById('hojas')) return;
@@ -243,7 +254,7 @@ function cerrarVistaPrevia() {
   limpiarVistaPrevia();
   document.getElementById('hojas').classList.remove('abierto');
 }
-
+ 
 async function abrirVistaPrevia(hojas) {
   crearVistaPrevia();
   limpiarVistaPrevia();
@@ -264,25 +275,43 @@ async function abrirVistaPrevia(hojas) {
   await Promise.all(cargas);
   estado.textContent = `(${hojas.length} hojas listas)`;
 }
-
-async function generarReporte() {
+ 
+async function generarReporte(grupos = GRUPOS_TODOS) {
   if (!datosSeccionesGeoJSON) { alert('Todavía no se cargan las secciones.'); return; }
   const fecha = new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' });
   const sel = document.getElementById('select-distrito').value;
   const todas = listaFeatures(datosSeccionesGeoJSON);
   const distritos = [{ id: '11', geo: datosDistrito11GeoJSON }, { id: '15', geo: datosDistrito15GeoJSON }]
     .filter(d => sel === 'TODOS' || sel === d.id)
-    .map(d => ({ ...d, res: todas.filter(f => String(f.properties.DISTRITO_L || '').trim() === d.id).map(resumenSeccion).sort(porSeccion) }));
+    .map(d => ({
+      ...d,
+      res: todas.filter(f => String(f.properties.DISTRITO_L || '').trim() === d.id)
+        .map(resumenSeccion)
+        .filter(r => grupos.includes(r.grupo))
+        .sort(porSeccion)
+    }))
+    .filter(d => d.res.length > 0);
+  if (!distritos.length) {
+    alert('No hay secciones con los estatus marcados en el distrito elegido.');
+    return;
+  }
   const hojas = [];
   if (distritos.length > 1) {
-    hojas.push(hojaMapa('Vista general · Distritos Locales 11 y 15', distritos.flatMap(d => d.res), distritos.map(d => d.geo).filter(Boolean), fecha));
+    hojas.push(hojaMapa('Vista general · Distritos Locales 11 y 15', distritos.flatMap(d => d.res), distritos.map(d => d.geo).filter(Boolean), fecha, grupos));
   }
-  distritos.forEach(d => hojas.push(hojaMapa(`Distrito Local ${d.id}`, d.res, [d.geo].filter(Boolean), fecha)));
-  hojas.push(hojaResumen(distritos, fecha));
-  distritos.forEach(d => hojas.push(hojaTablas(`Distrito Local ${d.id}`, d.res, fecha)));
+  distritos.forEach(d => hojas.push(hojaMapa(`Distrito Local ${d.id}`, d.res, [d.geo].filter(Boolean), fecha, grupos)));
+  hojas.push(hojaResumen(distritos, fecha, grupos));
+  distritos.forEach(d => hojas.push(hojaTablas(`Distrito Local ${d.id}`, d.res, fecha, grupos)));
   await abrirVistaPrevia(hojas);
 }
-
+ 
+// Reporte solo con los estatus marcados en las casillas (usa el distrito elegido arriba)
+async function generarReporteSeleccion() {
+  const grupos = GRUPOS_TODOS.filter(g => document.getElementById('chk-' + g).checked);
+  if (!grupos.length) { alert('Marca al menos un estatus: verdes, amarillas, rojas o grises.'); return; }
+  await generarReporte(grupos);
+}
+ 
 // ---- Arranque ----
 window.addEventListener('load', () => {
   ['input-seccion', 'input-calle', 'input-numero', 'input-colonia'].forEach(id =>
