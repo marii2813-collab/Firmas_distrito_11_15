@@ -42,7 +42,7 @@
   .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 
   .etiqueta-wrap { pointer-events:none; }
-  .etiqueta-seccion { position:absolute; left:0; top:0; transform:translate(-50%,-50%); border:1.5px solid #64748b; border-radius:4px; font-weight:700; line-height:1.2; padding:1px 4px; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
+  .etiqueta-seccion { position:absolute; left:0; top:0; transform:translate(-50%,-50%); border:1px solid #64748b; border-radius:3px; font-weight:700; line-height:1.1; padding:0.5px 3px; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,0.15); background:#ffffff; }
   .badge-status { padding:2px 6px; border-radius:4px; font-weight:700; font-size:10px; color:#fff; display:inline-block; }
   .bg-meta-ok { background-color:#22c55e; }
   .bg-meta-proceso { background-color:#eab308; color:#000; }
@@ -311,8 +311,8 @@
 
   const RELLENO = { pantalla: 0.40, impresion: 0.30 };
   const BORDE = { pantalla: 1.5, impresion: 2.0 };
-  const ETIQUETA = { max: 13, min: 7, cobertura: 0.85 };
-  const CAJA = { padX: 4, borde: 1 };
+  const ETIQUETA = { max: 12, min: 5.5, cobertura: 0.80 };
+  const CAJA = { padX: 2.5, borde: 1 };
   const VELO_FUERA = 0.5;
 
   const ESTILO_ETIQUETA = {
@@ -619,11 +619,11 @@
 
   function colocarCercaDeLaSeccion(centroPx, radio, fs, anchoPorPx, ocupadas, obstaculos, vista) {
     const { hw, hh } = medidasCaja(fs, anchoPorPx);
-    const m = 4;
-    const dMax = Math.min(radio + 30, 150);
+    const m = 2;
+    const dMax = Math.min(radio + 40, 160);
     let mejor = null;
 
-    for (let d = 0; d <= dMax; d += 3) {
+    for (let d = 0; d <= dMax; d += 2.5) {
       const puntos = d === 0 ? 1 : 16;
       for (let k = 0; k < puntos; k++) {
         const a = (k / 16) * 2 * Math.PI;
@@ -657,7 +657,6 @@
     const escala = Math.pow(2, z);
     const vista = m.getPixelBounds();
 
-    // Un tamaño común para casi todas las etiquetas; las que no caben en él se reducen dentro de su polígono
     const medidas = registros.map(e =>
       mayorTamanoQueCabe(e.ringRel0.map(([x, y]) => [x * escala, y * escala]), e.anchoPorPx, maxFs)
     );
@@ -756,9 +755,9 @@
     const tw = tarjeta.offsetWidth, th = tarjeta.offsetHeight;
     const W = map.getSize().x, H = map.getSize().y;
     const centro = limites.getCenter();
-    const zMax = map.getBoundsZoom(limites, false, L.point(40, 40)); // Padding ajustado para cubrir las esquinas exteriores
+    const zMax = map.getBoundsZoom(limites, false, L.point(40, 40));
 
-    for (let z = zMax, i = 0; i < 8; z -= 0.25, i++) {
+    for (let z = zMax, i = 0; z - i * 0.25 >= 8; z -= 0.25, i++) {
       map.setView(centro, z, { animate: false });
       const o = map.project(centro, z);
       const x1 = o.x - W / 2 + 8, y1 = o.y - H / 2 + 8;
@@ -1022,7 +1021,7 @@
     document.getElementById('kpi-barra').style.width = porcentaje + '%';
 
     if (layerGroup.getLayers().length > 0) {
-      map.fitBounds(layerGroup.getBounds(), { padding: [40, 40] }); // Padding optimizado para abarcar toda el área
+      map.fitBounds(layerGroup.getBounds(), { padding: [40, 40] });
     }
     ajustarEtiquetas();
   }
@@ -1034,7 +1033,6 @@
   }
   window.onload = cargarArchivosRaiz;
 
-  // ---- Controles del visor ----
   map.zoomControl.setPosition('topright');
 
   function setDistrito(valor) {
