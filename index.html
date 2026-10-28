@@ -219,6 +219,16 @@
       <h2>Reporte</h2>
       <button class="btn-acc" onclick="generarReporte()">📊 Reporte general por distrito</button>
       <p class="text-xs text-slate-500 mt-2">Abre una vista previa con los mapas (distritos y vista general), el resumen y las tablas por estatus. Desde ahí imprime o guarda como PDF (horizontal, sin encabezados).</p>
+
+      <div class="mt-4 pt-3 border-t">
+        <p class="text-xs font-bold text-slate-600 mb-1">Reporte solo de estatus</p>
+        <label class="capa"><input type="checkbox" id="chk-verde"> 🟢 Verdes (10 o más)</label>
+        <label class="capa"><input type="checkbox" id="chk-amarillo"> 🟡 Amarillas (5 a 9)</label>
+        <label class="capa"><input type="checkbox" id="chk-rojo"> 🔴 Rojas (1 a 4)</label>
+        <label class="capa"><input type="checkbox" id="chk-gris"> ⚪ Grises (sin firmas)</label>
+        <button class="btn-acc mt-2" onclick="generarReporteSeleccion()">📄 Generar con los estatus marcados</button>
+        <p class="text-xs text-slate-500 mt-2">Usa el distrito elegido arriba (Ambos, 11 o 15). Es independiente del filtro de Estatus del mapa.</p>
+      </div>
     </section>
 
     <section class="flex-1">
