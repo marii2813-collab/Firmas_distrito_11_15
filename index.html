@@ -129,6 +129,7 @@
   .tabla-resumen th, .tabla-resumen td { padding:9px 10px; font-size:12px; }
   .tabla-resumen tr.total td { font-weight:700; background:#e6edf5; border-top:2px solid var(--azul); }
   .nota { font-size:10px; color:#64748b; margin:10px 0 0; }
+  .bloque tfoot td { font-weight:700; background:#f1f5f9; border-top:2px solid var(--borde); }
   @media print {
     @page { size:A4 landscape; margin:5mm; }
     html, body { height:auto !important; overflow:visible !important; background:#fff !important; }
@@ -219,7 +220,7 @@
     <section>
       <h2>Reporte</h2>
       <button class="btn-acc" onclick="generarReporte()">📊 Reporte general por distrito</button>
-      <p class="text-xs text-slate-500 mt-2">Abre una vista previa con los mapas (distritos y vista general), el resumen y las tablas por estatus. Desde ahí imprime o guarda como PDF (horizontal, sin encabezados).</p>
+      <p class="text-xs text-slate-500 mt-2">Abre una vista previa con los mapas (distritos y vista general), el resumen, las tablas por estatus y, al final, el reporte por clasificación (general de cada estatus con sus secciones). Desde ahí imprime o guarda como PDF (horizontal, sin encabezados).</p>
 
       <div class="mt-4 pt-3 border-t">
         <p class="text-xs font-bold text-slate-600 mb-1">Reporte solo de estatus</p>
