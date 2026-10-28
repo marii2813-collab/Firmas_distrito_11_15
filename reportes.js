@@ -131,30 +131,38 @@ const crearHoja = (clase, html) => {
 const cabecera = (titulo, sub) => `<header class="cab-hoja"><div><h2>${esc(titulo)}</h2><p>${sub}</p></div>
   <div class="marca">Meta: ${META_POR_SECCION} firmas por sección</div></header>`;
 
-// Etiquetas de sección: tamaño común, reducido solo donde no cabe dentro de su polígono
-function etiquetarPoligonos(m, res) {
+// Etiquetas de sección: mismo algoritmo que el mapa interactivo (tamaño común, sin encimarse)
+function obstaculosHoja(m) {
+  const hoja = m.getContainer().closest('.hoja');
+  const leyenda = hoja && hoja.querySelector('.leyenda-hoja');
+  if (!leyenda) return [];
+  const base = m.getContainer().getBoundingClientRect();
+  const r = leyenda.getBoundingClientRect();
   const z = m.getZoom();
-  const datos = res.map(r => {
+  const a = m.project(m.containerPointToLatLng(L.point(r.left - base.left, r.top - base.top)), z);
+  const b = m.project(m.containerPointToLatLng(L.point(r.right - base.left, r.bottom - base.top)), z);
+  return [{ x1: Math.min(a.x, b.x) - 4, y1: Math.min(a.y, b.y) - 4, x2: Math.max(a.x, b.x) + 4, y2: Math.max(a.y, b.y) + 4 }];
+}
+
+function etiquetarPoligonos(m, res) {
+  const registros = [];
+  res.forEach(r => {
     const anillo = anilloPrincipal(r.feature.geometry);
-    if (!anillo.length) return null;
-    const pts = anillo.map(([lng, lat]) => { const p = m.project([lat, lng], z); return [p.x, p.y]; });
-    const pole = poloDeInaccesibilidad(pts);
-    const rel = pts.map(([x, y]) => [x - pole[0], y - pole[1]]);
+    if (!anillo.length) return;
+    const p0 = anillo.map(([lng, lat]) => { const p = m.project([lat, lng], 0); return [p.x, p.y]; });
+    const pole0 = poloDeInaccesibilidad(p0);
     const texto = String(r.seccion);
-    return { r, pole, texto, medida: mayorTamanoQueCabe(rel, anchoPorPixel(texto), ETIQUETA.max) };
-  }).filter(Boolean);
-  const uniforme = tamanoUniforme(datos.map(d => d.medida), ETIQUETA.max);
-  datos.forEach(d => {
-    const fs = d.medida === null ? ETIQUETA.min : Math.min(uniforme, d.medida);
-    const est = ESTILO_ETIQUETA[CLASE_GRUPO[d.r.grupo]];
-    L.marker(m.unproject(L.point(d.pole[0], d.pole[1]), z), {
+    const est = ESTILO_ETIQUETA[CLASE_GRUPO[r.grupo]];
+    const marker = L.marker(m.unproject(L.point(pole0[0], pole0[1]), 0), {
       interactive: false, keyboard: false,
       icon: L.divIcon({
         className: 'etiqueta-wrap', iconSize: [0, 0],
-        html: `<span class="etiqueta-seccion" style="font-size:${fs.toFixed(1)}px;background:${est.fondo};color:${est.texto}">${d.texto}</span>`
+        html: `<span class="etiqueta-seccion" style="background:${est.fondo};color:${est.texto};border-color:${est.borde}">${texto}</span>`
       })
     }).addTo(m);
+    registros.push({ marker, pole0, ringRel0: p0.map(([x, y]) => [x - pole0[0], y - pole0[1]]), anchoPorPx: anchoPorPixel(texto) });
   });
+  ajustarEtiquetasEn(m, registros, obstaculosHoja(m), ETIQUETA.max);
 }
 
 function hojaMapa(titulo, res, contornos, fecha) {
