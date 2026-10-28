@@ -174,12 +174,12 @@ function etiquetaFiltro(grupos) {
   return ' · Filtro: ' + GRUPOS_TODOS.filter(g => grupos.includes(g)).map(g => NOMBRE_CORTO[g]).join(', ');
 }
  
-function hojaMapa(titulo, res, contornos, fecha, grupos = GRUPOS_TODOS) {
+function hojaMapa(titulo, res, contornos, fecha, grupos = GRUPOS_TODOS, leyendaDerecha = false) {
   const e = estadisticas(res);
   const leyenda = GRUPOS_TODOS.filter(g => grupos.includes(g)).map(g =>
     `<span class="ley"><i style="background:${FILL_GRUPO[g]}"></i>${NOMBRE_GRUPO[g]} <b>${e.cuenta[g]}</b></span>`).join('');
   const el = crearHoja('mapa', cabecera(titulo, `${res.length} secciones${etiquetaFiltro(grupos)} · Generado ${fecha}`)
-    + `<div class="cuerpo-mapa"><div class="hoja-mapa"></div><div class="leyenda-hoja">${leyenda}</div></div>`);
+    + `<div class="cuerpo-mapa"><div class="hoja-mapa"></div><div class="leyenda-hoja${leyendaDerecha ? ' derecha' : ''}">${leyenda}</div></div>`);
   const grupoPor = new Map(res.map(r => [r.feature, r.grupo]));
   return {
     el,
@@ -297,7 +297,7 @@ async function generarReporte(grupos = GRUPOS_TODOS) {
   }
   const hojas = [];
   if (distritos.length > 1) {
-    hojas.push(hojaMapa('Vista general · Distritos Locales 11 y 15', distritos.flatMap(d => d.res), distritos.map(d => d.geo).filter(Boolean), fecha, grupos));
+    hojas.push(hojaMapa('Vista general · Distritos Locales 11 y 15', distritos.flatMap(d => d.res), distritos.map(d => d.geo).filter(Boolean), fecha, grupos, true));
   }
   distritos.forEach(d => hojas.push(hojaMapa(`Distrito Local ${d.id}`, d.res, [d.geo].filter(Boolean), fecha, grupos)));
   hojas.push(hojaResumen(distritos, fecha, grupos));
