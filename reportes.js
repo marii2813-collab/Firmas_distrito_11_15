@@ -156,9 +156,9 @@ function etiquetarPoligonos(m, res) {
 function hojaMapa(titulo, res, contornos, fecha) {
   const e = estadisticas(res);
   const leyenda = ['verde', 'amarillo', 'rojo', 'gris'].map(g =>
-    `<div class="ley-item"><i style="background:${FILL_GRUPO[g]}"></i>${NOMBRE_GRUPO[g]}<b>${e.cuenta[g]}</b></div>`).join('');
+    `<span class="ley"><i style="background:${FILL_GRUPO[g]}"></i>${NOMBRE_GRUPO[g]} <b>${e.cuenta[g]}</b></span>`).join('');
   const el = crearHoja('mapa', cabecera(titulo, `${res.length} secciones · Generado ${fecha}`)
-    + `<div class="cuerpo-mapa"><div class="hoja-mapa"></div><div class="leyenda-hoja"><div class="ley-titulo">Estatus de firmas</div>${leyenda}</div></div>`);
+    + `<div class="barra-leyenda">${leyenda}</div><div class="cuerpo-mapa"><div class="hoja-mapa"></div></div>`);
   const grupoPor = new Map(res.map(r => [r.feature, r.grupo]));
   return {
     el,
