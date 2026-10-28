@@ -231,6 +231,28 @@ function hojaTablas(titulo, res, fecha, grupos = GRUPOS_TODOS) {
     <div class="tabla-cuerpo"><div class="tarjetas">${tarjetas}</div><div class="grid-grupos">${ORDEN_TABLAS.filter(g => grupos.includes(g)).map(bloque).join('')}</div></div>`) };
 }
  
+// ---- Reporte por clasificación: una hoja por estatus, con su general y el detalle de cada sección ----
+function hojaClasificacion(grupo, distritos, fecha) {
+  const bloques = distritos.map(d => ({ id: d.id, res: d.res.filter(r => r.grupo === grupo).sort(porSeccion) }));
+  const e = estadisticas(bloques.flatMap(b => b.res));
+  const ambito = distritos.length > 1
+    ? 'Distritos Locales ' + distritos.map(d => d.id).join(' y ')
+    : 'Distrito Local ' + distritos[0].id;
+  const tarjetas = [['Secciones', e.secciones], ['Meta total', e.meta], ['Recabadas', e.rec], ['Faltantes', e.falta], ['Avance', e.avance + '%']]
+    .map(([k, v]) => `<div class="tarjeta"><span>${k}</span><b>${v}</b></div>`).join('');
+  const detalle = bloques.map(b => {
+    const s = estadisticas(b.res);
+    const filas = b.res.map(r => `<tr><td class="sec">${esc(r.seccion)}</td><td class="num">${META_POR_SECCION}</td>
+      <td class="num">${r.sinDato ? 'Sin dato' : r.rec}</td><td class="num">${r.sinDato ? '—' : r.falta}</td></tr>`).join('');
+    return `<div class="bloque"><div class="titulo-bloque" style="background:${TITULO_GRUPO[grupo]}"><span>Distrito Local ${b.id}</span><span>Total: ${s.secciones} secciones</span></div>
+      <table><thead><tr><th>Sección</th><th class="num">Meta</th><th class="num">Recabadas</th><th class="num">Faltantes</th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="4" class="vacio">Sin secciones de esta clasificación en este distrito</td></tr>'}</tbody>
+      <tfoot><tr><td>Subtotal distrito</td><td class="num">${s.meta}</td><td class="num">${s.rec}</td><td class="num">${s.falta}</td></tr></tfoot></table></div>`;
+  }).join('');
+  return { el: crearHoja('tabla', `${cabecera('Reporte por clasificación: ' + NOMBRE_GRUPO[grupo], ambito + ' · Generado ' + fecha)}
+    <div class="tabla-cuerpo"><div class="tarjetas">${tarjetas}</div><div class="grid-grupos">${detalle}</div></div>`) };
+}
+
 // ---- Vista previa e impresión ----
 function crearVistaPrevia() {
   if (document.getElementById('hojas')) return;
@@ -302,6 +324,7 @@ async function generarReporte(grupos = GRUPOS_TODOS) {
   distritos.forEach(d => hojas.push(hojaMapa(`Distrito Local ${d.id}`, d.res, [d.geo].filter(Boolean), fecha, grupos)));
   hojas.push(hojaResumen(distritos, fecha, grupos));
   distritos.forEach(d => hojas.push(hojaTablas(`Distrito Local ${d.id}`, d.res, fecha, grupos)));
+  ORDEN_TABLAS.filter(g => grupos.includes(g)).forEach(g => hojas.push(hojaClasificacion(g, distritos, fecha)));
   await abrirVistaPrevia(hojas);
 }
  
